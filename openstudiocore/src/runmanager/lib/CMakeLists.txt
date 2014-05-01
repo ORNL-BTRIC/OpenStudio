@@ -55,12 +55,6 @@ SET( runmanager_src
   LocalProcessCreator.cpp
   RunManager_Util.hpp
   RunManager_Util.cpp
-  SLURMManager.hpp
-  SLURMManager.cpp
-  SLURMProcess.hpp
-  SLURMProcess.cpp
-  SSHConnection.hpp
-  SSHConnection.cpp
   ExpandObjectsJob.cpp
   ExpandObjectsJob.hpp
   XMLPreprocessorJob.cpp
@@ -139,8 +133,13 @@ SET( runmanager_src
   SimulationEngine.cpp
   JSON.cpp
   JSON.hpp
-  
+
   MergedJobResults.hpp
+
+  RunManagerWatcher.hpp
+  RunManagerWatcher.cpp
+
+  JSONWorkflowOptions.hpp
 )
 
 IF( BUILD_TESTING OR BUILD_PACKAGE )
@@ -180,13 +179,10 @@ SET( runmanager_moc
   RunManagerStatus.hpp
   Configuration.hpp
   Process.hpp
-  SLURMProcess.hpp
-  SSHConnection.hpp
   LocalProcess.hpp
   CalculateEconomicsJob.hpp
   ProcessCreator.hpp
   LocalProcessCreator.hpp
-  SLURMManager.hpp
   ToolBasedJob.hpp
   ExpandObjectsJob.hpp
   XMLPreprocessorJob.hpp
@@ -210,6 +206,7 @@ SET( runmanager_moc
   ModelToRadPreProcessJob.hpp
   DakotaJob.hpp
   SimulationEngine.hpp
+  RunManagerWatcher.hpp
 )
 
 SET( runmanager_test_moc
@@ -217,10 +214,10 @@ SET( runmanager_test_moc
 )
 
 ## Qt moc generation
-qt4_wrap_cpp( runmanager_moc_src ${runmanager_moc} )
-qt4_wrap_cpp( runmanager_test_moc_src ${runmanager_test_moc} )
+qt5_wrap_cpp( runmanager_moc_src ${runmanager_moc} )
+qt5_wrap_cpp( runmanager_test_moc_src ${runmanager_test_moc} )
 
-qt4_wrap_ui( runmanager_UIS ${runmanager_UI} )
+qt5_wrap_ui( runmanager_UIS ${runmanager_UI} )
 
 # resource files
 SET( runmanager_qrc
@@ -228,15 +225,15 @@ SET( runmanager_qrc
 )
 
 # generate rules for building source files from the resources
-qt4_add_resources(runmanager_qrcs ${runmanager_qrc} )
+qt5_add_resources(runmanager_qrcs ${runmanager_qrc} )
 
 
 SOURCE_GROUP( runmanager FILES ${runmanager_src} ${runmanager_moc_src} )
 SOURCE_GROUP( runmanager_documentation FILES ${rmkt_documentation_src} )
 
 SET( runmanager_src
-  ${runmanager_src}  
-  ${runmanager_moc_src}  
+  ${runmanager_src}
+  ${runmanager_moc_src}
   ${runmanager_UIS}
   ${runmanager_documentation}
 )
@@ -266,6 +263,7 @@ SET( runmanager_test_src
   Test/ErrorEstimation_GTest.cpp
   Test/JSON_GTest.cpp
   Test/ExternallyManagedJobs_GTest.cpp
+  Test/RunJSONWorkflow_GTest.cpp
   "${CMAKE_BINARY_DIR}/src/runmanager/Test/ToolBin.hxx"
 )
 
@@ -280,19 +278,19 @@ AddPCH(openstudio_runmanager)
 
 #ADD_DEPENDENCIES( openstudio_runmanager openstudio_energyplus openstudio_model )
 
-IF( OPENSSL_FOUND AND BUILD_WITH_OPENSSL )
-  TARGET_LINK_LIBRARIES(${target_name} openstudio_energyplus openstudio_model openstudio_radiance openstudio_ruleset openstudio_isomodel libssh_static ${OPENSSL_LIBRARIES}) 
-   
-  IF(MSVC)
-    TARGET_LINK_LIBRARIES(${target_name} delayimp ws2_32)
-    
-    SET_TARGET_PROPERTIES(${target_name} PROPERTIES LINK_FLAGS "/DELAYLOAD:libeay32.dll")
-  ENDIF()
-  
-  ADD_DEFINITIONS(-DRUNMANAGER_HAVE_OPENSSL)
-ELSE()
+#IF( OPENSSL_FOUND AND BUILD_WITH_OPENSSL )
+#  TARGET_LINK_LIBRARIES(${target_name} openstudio_energyplus openstudio_model openstudio_radiance openstudio_ruleset openstudio_isomodel ${OPENSSL_LIBRARIES}) 
+#
+#  IF(MSVC)
+#    TARGET_LINK_LIBRARIES(${target_name} delayimp ws2_32)
+#
+#    SET_TARGET_PROPERTIES(${target_name} PROPERTIES LINK_FLAGS "/DELAYLOAD:libeay32.dll")
+#  ENDIF()
+#
+#  ADD_DEFINITIONS(-DRUNMANAGER_HAVE_OPENSSL)
+#ELSE()
   TARGET_LINK_LIBRARIES(${target_name} openstudio_energyplus openstudio_model openstudio_radiance openstudio_ruleset openstudio_isomodel)
-ENDIF()
+#ENDIF()
 
 IF( NOT APPLE )
 INSTALL(TARGETS ${target_name}

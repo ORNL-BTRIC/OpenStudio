@@ -98,7 +98,13 @@ LocationView::LocationView(const model::Model & model,
   setLayout(mainVLayout);
 
   // ***** Climate Zones *****
-  label = new QLabel("Climate Zone:");
+  QFrame * line;
+  line = new QFrame();
+  line->setFrameShape(QFrame::HLine);
+  line->setFrameShadow(QFrame::Sunken);
+  mainVLayout->addWidget(line);
+
+  label = new QLabel("Measure Tags (Optional):");
   label->setObjectName("H2");
   mainVLayout->addWidget(label);
 
@@ -112,6 +118,7 @@ LocationView::LocationView(const model::Model & model,
   hLayout->addLayout(vLayout);
 
   label = new QLabel("ASHRAE Climate Zone");
+  label->setObjectName("StandardsInfo");
   vLayout->addWidget(label);
 
   m_ashraeClimateZone = new QComboBox();
@@ -144,6 +151,7 @@ LocationView::LocationView(const model::Model & model,
   hLayout->addLayout(vLayout);
 
   label = new QLabel("CEC Climate Zone");
+  label->setObjectName("StandardsInfo");
   vLayout->addWidget(label);
 
   m_cecClimateZone = new QComboBox();
@@ -172,6 +180,11 @@ LocationView::LocationView(const model::Model & model,
 
   hLayout->addStretch();
   mainVLayout->addLayout(hLayout);
+
+  line = new QFrame();
+  line->setFrameShape(QFrame::HLine);
+  line->setFrameShadow(QFrame::Sunken);
+  mainVLayout->addWidget(line);
 
   // ***** Weather File *****
   label = new QLabel("Weather File");
@@ -353,7 +366,7 @@ void LocationView::onWeatherFileBtnClicked()
   QString lastPath = m_lastEpwPathOpened;
   if (lastPath.isEmpty() && m_lastDdyPathOpened.isEmpty()){
     openstudio::runmanager::ConfigOptions co(true);
-    lastPath = toQString(co.getDefaultEPWLocation().external_file_string());
+    lastPath = toQString(co.getDefaultEPWLocation().native());
   } else if (lastPath.isEmpty()) {
     QString path = m_lastDdyPathOpened;
     lastPath = path.replace(".ddy", ".epw");
@@ -363,7 +376,7 @@ void LocationView::onWeatherFileBtnClicked()
   if(!fileName.isEmpty()){
     
     openstudio::path epwPath = toPath(fileName);
-    openstudio::path newPath = toPath(m_modelTempDir) / toPath("resources/files") / toPath(epwPath.filename());
+    openstudio::path newPath = toPath(m_modelTempDir) / toPath("resources/files") / epwPath.filename();
     openstudio::path previousEPWPath;
 
     StringStreamLogSink ss;
@@ -464,7 +477,7 @@ void LocationView::onDesignDayBtnClicked()
   QString lastPath = m_lastDdyPathOpened;
   if (lastPath.isEmpty() && m_lastEpwPathOpened.isEmpty()){
     openstudio::runmanager::ConfigOptions co(true);
-    lastPath = toQString(co.getDefaultEPWLocation().external_file_string());
+    lastPath = toQString(co.getDefaultEPWLocation().native());
   } else if (lastPath.isEmpty()) {
     QString path = m_lastEpwPathOpened;
     lastPath = path.replace(".epw", ".ddy");

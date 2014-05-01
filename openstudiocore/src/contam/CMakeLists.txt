@@ -13,14 +13,20 @@ SET( ${target_name}_src
   PrjDefines.hpp
   PrjModel.hpp
   PrjModel.cpp
-  PrjPublic.hpp
-  PrjPublic.cpp
-  PrjPrivate.hpp
-  PrjPrivate.cpp
+  PrjModelImpl.hpp
+  PrjModelImpl.cpp
+  PrjObjects.hpp
+  PrjObjects.cpp
+  PrjObjectsImpl.hpp
+  PrjObjectsImpl.cpp
   PrjSubobjects.hpp
   PrjSubobjects.cpp
-  PrjSubobjectsPrivate.hpp
-  PrjSubobjectsPrivate.cpp
+  PrjSubobjectsImpl.hpp
+  PrjSubobjectsImpl.cpp
+  PrjAirflowElements.hpp
+  PrjAirflowElements.cpp
+  PrjAirflowElementsImpl.hpp
+  PrjAirflowElementsImpl.cpp
 )
 
 # resource files
@@ -29,7 +35,7 @@ SET( ${target_name}_qrc
 )
 
 # generate rules for building source files from the resources
-qt4_add_resources(${target_name}_qrcs ${${target_name}_qrc} )
+qt5_add_resources(${target_name}_qrcs ${${target_name}_qrc} )
 
 SET( ${target_name}_test_src
   Test/ContamFixture.hpp
@@ -50,7 +56,6 @@ SET( ${target_name}_depends
   openstudio_model
   openstudio_osversion
   zkexpat
-  boost_log
 )
 
 ADD_LIBRARY( ${target_name} 

@@ -363,10 +363,10 @@ TEST_F(AnalysisDriverFixture,SimpleProject_EditProblemWithTwoWorkflows) {
     ASSERT_TRUE(index);
     MeasureGroup dv("Idf Measure",MeasureVector(1u,NullMeasure()));
     problem.insert(*index,dv);
-    BOOST_FOREACH(const BCLMeasure& measure,BCLMeasure::patApplicationMeasures()) {
-      if (measure.inputFileType() == FileReferenceType::IDF) {
-        RubyMeasure measure(measure);
-        dv.push(measure);
+    BOOST_FOREACH(const BCLMeasure& bclMeasure,BCLMeasure::patApplicationMeasures()) {
+      if (bclMeasure.inputFileType() == FileReferenceType::IDF) {
+        RubyMeasure rubyMeasure(bclMeasure);
+        dv.push(rubyMeasure);
         break;
       }
     }
@@ -455,7 +455,7 @@ TEST_F(AnalysisDriverFixture, SimpleProject_ZipFileForCloud) {
       boost::filesystem::remove_all(remoteDir);
     }
     boost::filesystem::create_directory(remoteDir);
-    openstudio::path zipFilePath = remoteDir / toPath(tempZipFilePath.filename());
+    openstudio::path zipFilePath = remoteDir / tempZipFilePath.filename();
     boost::filesystem::copy_file(tempZipFilePath,zipFilePath);
     UnzipFile unzip(zipFilePath);
     unzip.extractAllFiles(remoteDir);

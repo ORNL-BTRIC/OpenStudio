@@ -448,7 +448,7 @@ namespace detail {
   void ToolBasedJob::addRequiredFile(const openstudio::path &t_from, const openstudio::path &t_local)
   { 
     QWriteLocker l(&m_mutex);
-    pushBackRequiredFile(QUrl::fromLocalFile(toQString(t_from.native_file_string())), t_local);
+    pushBackRequiredFile(QUrl::fromLocalFile(toQString(t_from.native())), t_local);
   }
 
   void ToolBasedJob::addRequiredFile(const QUrl &t_from, const openstudio::path &t_local)
@@ -460,7 +460,7 @@ namespace detail {
   void ToolBasedJob::addRequiredFile(const FileInfo &t_from, const openstudio::path &t_local)
   { 
     QWriteLocker l(&m_mutex);
-    pushBackRequiredFile(QUrl::fromLocalFile(toQString(t_from.fullPath.native_file_string())), t_local);
+    pushBackRequiredFile(QUrl::fromLocalFile(toQString(t_from.fullPath.native())), t_local);
 
     std::vector<std::pair<QUrl, openstudio::path> > filereqs = t_from.requiredFiles;
 //    m_inputfile_watcher.addPath(toQString(t_from.fullPath));
@@ -598,8 +598,8 @@ namespace detail {
               && boost::filesystem::is_directory(filespath))
           {
             // it's an OSM file, we want to also bring along its reqs
-            for(boost::filesystem::basic_recursive_directory_iterator<openstudio::path> pitr(filespath);
-                pitr != boost::filesystem::basic_recursive_directory_iterator<openstudio::path>();
+            for(boost::filesystem::recursive_directory_iterator pitr(filespath);
+                pitr != boost::filesystem::recursive_directory_iterator();
                 ++pitr)
             {
               openstudio::path p = pitr->path();
@@ -1020,42 +1020,47 @@ namespace detail {
 
   void ToolBasedJob::processError(QProcess::ProcessError t_e, const std::string &t_desc)
   {
+    Files outfiles = outputFiles();
+    openstudio::path outpath = outdir();
+
     QWriteLocker l(&m_mutex);
     LOG(Error, "ToolBasedJob processError: " << toString(uuid()) << " " << t_e << " " << t_desc);
     m_error_info.processError(t_e, t_desc);
+    processResultFiles(outpath, outfiles);
+    JobErrors e = m_error_info.errors();
+    l.unlock();
+    setErrors(e);
     quit();
   }
 
 
   void ToolBasedJob::processError(QProcess::ProcessError t_e)
   {
-    QWriteLocker l(&m_mutex);
-    LOG(Error, "ToolBasedJob processError: " << toString(uuid()) << " " << t_e);
-    m_error_info.processError(t_e);
-    quit();
-  }
-
-  void ToolBasedJob::processFinished(int t_exitCode, QProcess::ExitStatus t_exitStatus)
-  {
     Files outfiles = outputFiles();
     openstudio::path outpath = outdir();
 
-
     QWriteLocker l(&m_mutex);
-    LOG(Debug, "ToolBasedJob processFinished: " << toString(uuid()) << " " << t_exitCode << " " << t_exitStatus); 
+    LOG(Error, "ToolBasedJob processError: " << toString(uuid()) << " " << t_e);
+    m_error_info.processError(t_e);
 
+    processResultFiles(outpath, outfiles);
+    JobErrors e = m_error_info.errors();
+    l.unlock();
+    setErrors(e);
+    quit();
+  }
 
-    m_error_info.exitCode(t_exitCode);
-    m_error_info.exitStatus(t_exitStatus);
+  void ToolBasedJob::processResultFiles(const openstudio::path &t_outpath, const Files &t_outfiles)
+  {
     // If an eplusout.err file was created, let's parse it
-    openstudio::path errpath = outpath / toPath("eplusout.err");
+    openstudio::path errpath = t_outpath / toPath("eplusout.err");
     if (boost::filesystem::exists(errpath))
     {
       LOG(Debug, "Setting error file: " << openstudio::toString(errpath));
       m_error_info.errorFile(openstudio::energyplus::ErrorFile(errpath));
     }
 
-    std::vector<FileInfo> resultpaths = outfiles.getAllByFilename("result.ossr").files();
+    std::vector<FileInfo> resultpaths = t_outfiles.getAllByFilename("result.ossr").files();
     if (!resultpaths.empty())
     {
       std::vector<openstudio::ruleset::OSResult> results;
@@ -1094,8 +1099,24 @@ namespace detail {
       m_error_info.osResult(results);
 
     } else {
-      LOG(Debug, "No osresult file found at: " << openstudio::toString(outpath));
+      LOG(Debug, "No osresult file found at: " << openstudio::toString(t_outpath));
     }
+  }
+
+  void ToolBasedJob::processFinished(int t_exitCode, QProcess::ExitStatus t_exitStatus)
+  {
+    Files outfiles = outputFiles();
+    openstudio::path outpath = outdir();
+
+
+    QWriteLocker l(&m_mutex);
+    LOG(Debug, "ToolBasedJob processFinished: " << toString(uuid()) << " " << t_exitCode << " " << t_exitStatus); 
+
+
+    m_error_info.exitCode(t_exitCode);
+    m_error_info.exitStatus(t_exitStatus);
+
+    processResultFiles(outpath, outfiles);
 
     JobErrors e = m_error_info.errors();
     if (outfiles.files().empty())

@@ -27,9 +27,9 @@
 
 #include <utilities/core/Optional.hpp>
 
-#include <QtCore/QObject>
-#include <QtCore/QVariant>
-#include <QtCore/QStringList>
+#include <QObject>
+#include <QVariant>
+#include <QStringList>
 
 #include <boost/foreach.hpp>
 
@@ -254,6 +254,11 @@ namespace detail {
     /** Set a bool for field index. Throws if unsuccessful. Should only be used for defaulted
      *  or required boolean fields. */
     void setBooleanFieldValue(unsigned index, bool value);
+
+    /** This is solely to prevent implicit conversion of types to bool. This will cause a link time
+     *  error if anything other than a bool is used for value. This has no implementation. */
+    template <class T>
+    void setBooleanFieldValue(unsigned index, const T& value);
 
     /** Sets index to point to schedule if schedule's ScheduleTypeLimits are compatible with the 
      *  ScheduleType in the ScheduleTypeRegistry for (className,scheduleDisplayName), or if 

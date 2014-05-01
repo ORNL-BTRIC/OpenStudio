@@ -35,6 +35,7 @@
 #include "JobState.hpp"
 #include <QReadWriteLock>
 #include <QDateTime>
+#include <boost/weak_ptr.hpp>
 
 Q_DECLARE_METATYPE(QProcess::ExitStatus);
 Q_DECLARE_METATYPE(QProcess::ProcessError);
@@ -463,6 +464,15 @@ namespace detail {
 
     private:
       REGISTER_LOGGER("openstudio.runmanager.Job_Impl");
+
+      enum CleanType {
+        none,
+        standard,
+        maximum
+      };
+
+      CleanType m_cleanTypeToRun;
+      void doCleanUp();
 
       boost::optional<QDateTime> lastRunInternal() const;
 

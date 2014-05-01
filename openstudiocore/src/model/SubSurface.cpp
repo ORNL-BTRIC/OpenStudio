@@ -204,7 +204,7 @@ namespace detail {
 
     boost::optional<ConstructionBase> construction = getObject<ModelObject>().getModelObjectTarget<ConstructionBase>(OS_SubSurfaceFields::ConstructionName);
     if (construction){
-      return std::make_pair<ConstructionBase, int>(*construction, 0);
+      return std::make_pair(*construction, 0);
     }
 
     boost::optional<Surface> surface = this->surface();
@@ -429,7 +429,7 @@ namespace detail {
     std::string subSurfaceType = this->subSurfaceType();
     if (istringEqual("FixedWindow", subSurfaceType) ||
         istringEqual("OperableWindow", subSurfaceType) ||
-        istringEqual("GlassDor", subSurfaceType))
+        istringEqual("GlassDoor", subSurfaceType))
     {
       result = true;
     }
@@ -1128,6 +1128,12 @@ std::vector<SubSurface> applySkylightPattern(const std::vector<std::vector<Point
   std::vector<SubSurface> result;
 
   BOOST_FOREACH(const Space& space, spaces){
+
+    if (space.isPlenum()){
+      LOG_FREE(Warn, "OpenStudio.applySkylightPattern", "Cannot apply skylights to plenum space");
+      continue;
+    }
+
     Transformation transformation = space.buildingTransformation();
     Transformation inverseTransformation = transformation.inverse();
 

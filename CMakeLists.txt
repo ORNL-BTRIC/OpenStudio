@@ -3,8 +3,8 @@ CMAKE_MINIMUM_REQUIRED( VERSION 2.8.7 )
 PROJECT(OpenStudio)
 
 SET(CMAKE_VERSION_MAJOR 1)
-SET(CMAKE_VERSION_MINOR 2)
-SET(CMAKE_VERSION_PATCH 5)
+SET(CMAKE_VERSION_MINOR 3)
+SET(CMAKE_VERSION_PATCH 3)
 
 SET(CMAKE_VERSION_BUILD "Unknown" CACHE STRING "Build number")
 FIND_PACKAGE(Git)
@@ -16,14 +16,23 @@ IF(GIT_FOUND)
                   OUTPUT_VARIABLE GIT_VERSION
                   ERROR_QUIET
                   OUTPUT_STRIP_TRAILING_WHITESPACE)
-  IF(${RESULT} EQUAL 0)
+  IF(${RESULT} EQUAL 0 AND NOT "${GIT_VERSION}" EQUAL "${CMAKE_VERSION_BUILD}")
     SET(CMAKE_VERSION_BUILD ${GIT_VERSION} CACHE STRING "Build number" FORCE) # git sha                  
   ENDIF()
+  
+  GET_FILENAME_COMPONENT(GIT_DIR "${GIT_EXECUTABLE}" PATH)
+ELSE()
+  SET(GIT_DIR "")
+ENDIF()
+
+FIND_PROGRAM(PATCH_EXE patch HINTS "${GIT_DIR}" "${GIT_DIR}/../bin/")
+STRING(COMPARE EQUAL "${PATCH_EXE}" "PATCH_EXE-NOTFOUND" PATCH_EXE_NOTFOUND)
+IF ($PATCH_EXE_NOTFOUND)
+  MESSAGE(SEND_ERROR "Required program patch not found")
 ENDIF()
 
 # EnergyPlus Idd version
-SET(ENERGYPLUS_VERSION "8.0" CACHE INTERNAL "EnergyPlus Version")
-
+SET(ENERGYPLUS_VERSION "8.1" CACHE INTERNAL "EnergyPlus Version")
 
 OPTION( NIGHTLY_BUILD "Use configurations for Nightly Build" OFF )
 
@@ -34,7 +43,7 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/openstudiocore/CMake" ${CMAKE
 
 # Build C++ documentation using Doxygen
 # Requires: doxygen
-OPTION( BUILD_DOCUMENTATION "Build Documenation" OFF )
+OPTION( BUILD_DOCUMENTATION "Build Documentation" OFF )
 
 IF(BUILD_DOCUMENTATION)
   Find_Package( Doxygen REQUIRED )
@@ -43,6 +52,10 @@ ENDIF()
 # Build CSharp bindings
 # Requires: SWIG
 OPTION( BUILD_CSHARP_BINDINGS "Build CSharp bindings" OFF )
+
+# Build Java bindings
+# Requires: SWIG
+OPTION( BUILD_JAVA_BINDINGS "Build Java bindings" OFF )
 
 # Build Node V8 bindings
 # Requires: SWIG
@@ -79,26 +92,44 @@ IF(UNIX)
   ENDIF()
 ELSEIF(WIN32)
   IF(CMAKE_CL_64)
-    SET(OPENSSL_PATH "OpenSSL-Win64")
-    IF(NOT EXISTS "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip")
-      MESSAGE(STATUS "Downloading OpenSSL (x64)")
-    ENDIF()
-    FILE(DOWNLOAD "http://developer.nrel.gov/downloads/buildings/openstudio/src/OpenSSL-Win64.zip" "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip" TIMEOUT 120 INACTIVITY_TIMEOUT 120 SHOW_PROGRESS EXPECTED_MD5 974FDD1EDD3CBDCC54A0EEEE0DBB00CC)
+    SET(OPENSSL_ARCH 64)
+    SET(OPENSSL_EXPECTED_HASH b63ff40c9d4f94aef43e3c4d8085a5c5)
   ELSE()
-    SET(OPENSSL_PATH "OpenSSL-Win32")
-    IF(NOT EXISTS "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip")
-      MESSAGE(STATUS "Downloading OpenSSL (x86)")
-    ENDIF()
-    FILE(DOWNLOAD "http://developer.nrel.gov/downloads/buildings/openstudio/src/OpenSSL-Win32.zip" "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip" TIMEOUT 120 INACTIVITY_TIMEOUT 120 SHOW_PROGRESS EXPECTED_MD5 890EA14E30C5BE3C4F9298DBC516AA33)
+    SET(OPENSSL_ARCH 32)
+    SET(OPENSSL_EXPECTED_HASH 507b6a190e282ab3018ee4a69371f6d8)
   ENDIF()
-  EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}")
-  EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E tar xfz "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip" WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+  SET(OPENSSL_VERSION "1.0.1g")
+  SET(OPENSSL_PATH "OpenSSL-Win${OPENSSL_ARCH}")
+  IF(EXISTS "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip")
+    FILE(MD5 "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip" OPENSSL_HASH)
+  ENDIF()
+  IF(NOT EXISTS "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip" OR NOT "${OPENSSL_HASH}" MATCHES "${OPENSSL_EXPECTED_HASH}")
+    MESSAGE(STATUS "Downloading OpenSSL ${OPENSSL_VERSION} (${OPENSSL_ARCH}-bit)")
+    FILE(DOWNLOAD "http://developer.nrel.gov/downloads/buildings/openstudio/src/OpenSSL-Win${OPENSSL_ARCH}-${OPENSSL_VERSION}.zip" "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip" TIMEOUT 120 INACTIVITY_TIMEOUT 120 SHOW_PROGRESS EXPECTED_MD5 ${OPENSSL_EXPECTED_HASH})
+    EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}")
+    EXECUTE_PROCESS(COMMAND ${CMAKE_COMMAND} -E tar xfz "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}.zip" WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+  ENDIF()
   SET(OPENSSL_ROOT_DIR "${CMAKE_BINARY_DIR}/${OPENSSL_PATH}")
 ENDIF()
 
 
 
 IF(MSVC)
+  # Visual Studio information for the user
+  if    (${CMAKE_C_COMPILER_VERSION} VERSION_LESS "15.00.21022.08")
+    message(FATAL_ERROR "Visual Studio earlier than VS2008 is not supported")
+  elseif(${CMAKE_C_COMPILER_VERSION} VERSION_EQUAL "15.00.21022.08")
+    message(WARNING "Service Pack 1 for Visual Studio 2008 is strongly recommended")
+  elseif(${CMAKE_C_COMPILER_VERSION} VERSION_EQUAL "15.00.30729.01")
+    # vc90sp1
+  elseif(${CMAKE_C_COMPILER_VERSION} VERSION_EQUAL "16.00.30319.01")
+    message(WARNING "Service Pack 1 for Visual Studio 2010 is strongly recommended")
+  elseif(${CMAKE_C_COMPILER_VERSION} VERSION_EQUAL "16.00.40219.01")
+    # vc100sp1
+  elseif(${CMAKE_C_COMPILER_VERSION} VERSION_GREATER "16.00.40219.01")
+    message(WARNING "Visual Studio newer than VS2010 is not currently supported")
+  endif()
+
   # Build with Multiple Processes
   SET(BUILD_WITH_MULTIPLE_PROCESSES ON CACHE BOOL "/MP compiler flag for full processor utilization")
   MARK_AS_ADVANCED( BUILD_WITH_MULTIPLE_PROCESSES )
@@ -183,14 +214,41 @@ ENDIF()
 # Use PCH
 OPTION( USE_PCH "Use precompiled headers" OFF )
 
-FIND_PACKAGE (Qt4 4.8.0 COMPONENTS QtCore QtGui QtSql QtNetwork QtXml QtXmlPatterns QtWebKit)
-MARK_AS_ADVANCED(QT_QTMOTIF_INCLUDE_DIR)
-MARK_AS_ADVANCED(QT_QTMOTIF_LIBRARY_DEBUG)
-MARK_AS_ADVANCED(QT_QTMOTIF_LIBRARY_RELEASE)
+FIND_PACKAGE (Qt5Widgets) #Qt5Core, Qt5Gui, Qt5Widgets
+FIND_PACKAGE (Qt5Sql) #Qt5Core, Qt5Sql
+FIND_PACKAGE (Qt5Network) #Qt5Core, Qt5Network
+FIND_PACKAGE (Qt5Xml) #Qt5Core, Qt5Xml
+FIND_PACKAGE (Qt5WebKit) #Qt5Core, Qt5Gui, Qt5Network, Qt5WebKit
+FIND_PACKAGE (Qt5WebKitWidgets) #Qt5Core, Qt5Gui, Qt5Multimedia, Qt5MultimediaWidgets, Qt5Network, Qt5OpenGL, Qt5Positioning, Qt5PrintSupport, Qt5Qml, Qt5Quick, Qt5Sensors, Qt5WebKit, Qt5WebKitWidgets, Qt5Widgets
+#FIND_PACKAGE (Qt5WinExtras) #Qt5Core, Qt5Gui, Qt5WinExtras
+FIND_PACKAGE (Qt5Concurrent) #Qt5Concurrent, Qt5Core
+MARK_AS_ADVANCED(Qt5Concurrent_DIR)
+MARK_AS_ADVANCED(Qt5Core_DIR)
+MARK_AS_ADVANCED(Qt5Gui_DIR)
+MARK_AS_ADVANCED(Qt5Gui_EGL_LIBRARY)
+MARK_AS_ADVANCED(Qt5Multimedia_DIR)
+MARK_AS_ADVANCED(Qt5MultimediaWidgets_DIR)
+MARK_AS_ADVANCED(Qt5Network_DIR)
+MARK_AS_ADVANCED(Qt5OpenGL_DIR)
+MARK_AS_ADVANCED(Qt5Positioning_DIR)
+MARK_AS_ADVANCED(Qt5PrintSupport_DIR)
+MARK_AS_ADVANCED(Qt5Qml_DIR)
+MARK_AS_ADVANCED(Qt5Quick_DIR)
+MARK_AS_ADVANCED(Qt5Sensors_DIR)
+MARK_AS_ADVANCED(Qt5Sql_DIR)
+MARK_AS_ADVANCED(Qt5WebKit_DIR)
+MARK_AS_ADVANCED(Qt5WebKitWidgets_DIR)
+MARK_AS_ADVANCED(Qt5Widgets_DIR)
+#MARK_AS_ADVANCED(Qt5WinExtras_DIR)
+MARK_AS_ADVANCED(Qt5Xml_DIR)
 
-  # Build Qt
-IF(QT_QMAKE_EXECUTABLE)
+# Build Qt
+IF(Qt5Widgets_DIR)
   OPTION( BUILD_QT "Build Qt" OFF)
+
+  IF(${Qt5Widgets_VERSION} VERSION_LESS "5.1.1")
+    MESSAGE(FATAL_ERROR "Minimum supported Qt is v5.1.1")
+  ENDIF()
 ELSE()
   OPTION( BUILD_QT "Build Qt" ON)
 ENDIF()
@@ -224,15 +282,6 @@ MARK_AS_ADVANCED(Boost_LIB_DIAGNOSTIC_DEFINITIONS)
 MARK_AS_ADVANCED(ProcessorCount_cmd_getconf)
 MARK_AS_ADVANCED(ProcessorCount_cmd_sysctl)
 
-# Fix for OSX 10.9 Mavericks, allows osx_deployment_target=10.9
-if(APPLE)
-    set(apple-frameworks "-stdlib=libstdc++")
-    set(CMAKE_SHARED_LINKER_FLAGS " ${apple-frameworks} ${CMAKE_SHARED_LINKER_FLAGS}")
-    set(CMAKE_EXE_LINKER_FLAGS " ${apple-frameworks} ${CMAKE_EXE_LINKER_FLAGS}")
-    set(CMAKE_MODULE_LINKER_FLAGS " ${apple-frameworks} ${CMAKE_MODULE_LINKER_FLAGS}")
-    set(CMAKE_CXX_FLAGS " -stdlib=libstdc++ ${CMAKE_CXX_FLAGS}")
-endif()
-
 # Boost
 IF(APPLE)
   set(Boost_USE_STATIC_LIBS ON)  
@@ -250,8 +299,10 @@ IF (WIN32)
 #  ENDIF (MSVC)
 ENDIF (WIN32)
 
-SET( Boost_ADDITIONAL_VERSIONS "1.40" "1.47" "1.47.0")
-FIND_PACKAGE( Boost 1.40.0 COMPONENTS filesystem regex program_options system thread date_time serialization)
+# DLM: should we allow boost to be linked dynamically on Unix or should we force static for all platforms?
+
+SET( Boost_ADDITIONAL_VERSIONS "1.55")
+FIND_PACKAGE( Boost 1.55.0 COMPONENTS filesystem regex program_options system thread date_time serialization log)
 
 IF(Boost_THREAD_FOUND)
   OPTION( BUILD_BOOST "Build Boost" OFF)
@@ -315,6 +366,30 @@ IF(BUILD_WITH_MULTIPLE_PROCESSES)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
 ENDIF()
 
+IF(CMAKE_CL_64 OR (MSVC AND BUILD_QT))
+  IF(CMAKE_CL_64)
+    SET(NMAKE_ARCH "/amd64")
+  ELSE()
+    SET(NMAKE_ARCH "")
+  ENDIF()
+  IF(MSVC10)
+    FIND_PROGRAM(NMAKE_EXE nmake PATHS
+      "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\VisualStudio\\10.0;InstallDir]/../../VC/bin${NMAKE_ARCH}"
+      $ENV{VS100COMNTOOLS}../../VC/bin${NMAKE_ARCH}
+    )
+  ELSEIF(MSVC12)
+    FIND_PROGRAM(NMAKE_EXE nmake PATHS
+      "[HKEY_LOCAL_MACHINE\\SOFTWARE\\Wow6432Node\\Microsoft\\VisualStudio\\12.0;InstallDir]/../../VC/bin${NMAKE_ARCH}"
+      $ENV{VS120COMNTOOLS}../../VC/bin${NMAKE_ARCH}
+    )
+  ENDIF()
+
+  IF(NMAKE_EXE STREQUAL "NMAKE_EXE-NOTFOUND" OR NMAKE_EXE STREQUAL "nmake")
+    MESSAGE(WARNING "NMake not found - CMake will attempt to call nmake directly")
+    SET(NMAKE_EXE "nmake" CACHE STRING "nmake executable" FORCE)
+  ENDIF()
+ENDIF()
+
 IF(BUILD_NODE)
   # OSX can work with a static ruby library
   ExternalProject_Add(Node
@@ -359,9 +434,10 @@ IF(BUILD_RUBY)
       )
     SET(RUBY_EXECUTABLE ${CMAKE_BINARY_DIR}/Ruby-prefix/src/Ruby-install/bin/ruby)
   ELSE()
+
     IF(CMAKE_CL_64)
-       find_program(NMAKE_EXE nmake)
-       
+      find_program(NMAKE_EXE nmake)
+
       # Ruby 1.8 cannot be built for 64bit windows because of faulty assumptions in the code,
       # and Ruby 2.0 isn't shipped in any way we can link to it, so for now we build our own
       ExternalProject_Add(Ruby
@@ -443,7 +519,9 @@ IF(BUILD_SWIG)
       # We patch it up with a version of pcre we provide to avoid having to have the requirement locally
       ExternalProject_Add( SWIG
         URL http://developer.nrel.gov/downloads/buildings/openstudio/src/swig-2.0.10.tar.gz
+        #URL http://downloads.sourceforge.net/project/swig/swig/swig-3.0.0/swig-3.0.0.tar.gz
         URL_MD5 6d5e7ad05b4a404e5e85db9befb70c9a
+
         PATCH_COMMAND cp ${CMAKE_SOURCE_DIR}/dependencies/pcre-8.31.tar.bz2 ${CMAKE_BINARY_DIR}/SWIG-prefix/src/SWIG-build && cd ${CMAKE_BINARY_DIR}/SWIG-prefix/src/SWIG-build && ../SWIG/Tools/pcre-build.sh
         CONFIGURE_COMMAND ../SWIG/configure --prefix=${CMAKE_BINARY_DIR}/SWIG-prefix/src/SWIG-install
         BUILD_COMMAND cd ${CMAKE_BINARY_DIR}/SWIG-prefix/src/SWIG-build && $(MAKE)
@@ -466,47 +544,58 @@ ENDIF()
 
 IF(BUILD_BOOST)
   IF(APPLE)
-    STRING(REGEX MATCH "[0-9]+\\.[0-9]+" OSX_SDK_VERSION ${CMAKE_OSX_SYSROOT})
-    # Added cxxflags="-stdlib=libstdc++" linkflags="-stdlib=libstdc++" for Boost 1.47.0 to compile when osx_deployment_target=10.9
-    # These flags can be removed if Boost is updated to newer version (~1.55.0), may need --c++11 flag?
+    IF (CMAKE_OSX_DEPLOYMENT_TARGET MATCHES ".*10\\.9.*")
+      set(apple-frameworks "-stdlib=libc++")
+    ELSE()
+      set(apple-frameworks "-stdlib=libstdc++")
+    ENDIF()
     ExternalProject_Add( Boost
-      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_47_0.tar.gz
-      URL_MD5 b0d9b288627b6a57d41d425d4f467592
+      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_55_0.tar.gz
+      URL_MD5 93780777cfbf999a600f62883bd54b17
       CONFIGURE_COMMAND cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && ./bootstrap.sh
-      PATCH_COMMAND patch -p1 < ${CMAKE_SOURCE_DIR}/dependencies/Boost/xcode_43.diff
-      BUILD_COMMAND cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && ./b2 cxxflags="-stdlib=libstdc++" linkflags="-stdlib=libstdc++" variant=release variant=debug address-model=32_64 macosx-version-min=${CMAKE_OSX_DEPLOYMENT_TARGET} macosx-version=${OSX_SDK_VERSION}  architecture=x86 --layout=tagged  --without-python --without-math --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT} install
+      PATCH_COMMAND ${PATCH_EXE} -p1 < ${CMAKE_SOURCE_DIR}/dependencies/Boost/xcode_51a.diff < ${CMAKE_SOURCE_DIR}/dependencies/Boost/xcode_51b.diff
+      BUILD_COMMAND cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && ./b2 toolset=clang cxxflags=${apple-frameworks} linkflags=${apple-frameworks} variant=debug,release address-model=32_64 architecture=x86 define=BOOST_CHRONO_HEADER_ONLY --layout=tagged --with-filesystem --with-regex --with-program_options --with-system --with-thread --with-date_time --with-serialization --with-log --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT} install
       INSTALL_COMMAND ""
       )
     SET(BOOST_ROOT ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install)
   ELSEIF(UNIX)
     ExternalProject_Add( Boost
-      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_47_0.tar.gz
-      URL_MD5 b0d9b288627b6a57d41d425d4f467592
+      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_55_0.tar.gz
+      URL_MD5 93780777cfbf999a600f62883bd54b17
       CONFIGURE_COMMAND cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && ./bootstrap.sh
-      BUILD_COMMAND cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && ./b2 cxxflags=-fPIC link=static variant=debug variant=release --layout=tagged --without-python --without-math --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT} install
+      BUILD_COMMAND cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && ./b2 cxxflags=-fPIC link=static variant=debug,release define=BOOST_CHRONO_HEADER_ONLY --layout=tagged --with-filesystem --with-regex --with-program_options --with-system --with-thread --with-date_time --with-serialization --with-log --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT} install
       INSTALL_COMMAND ""
       )
     SET(BOOST_ROOT ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install)
   ELSE()
     # The call to cmd and VS_UNICODE_OUTPUT is to fix an oddity where boost configuration complains about missing ICU when it shouldn't 
     # be trying to find it
+    
+    SET(B2_TOOLSET "")
+    IF(MSVC90)
+      SET(B2_TOOLSET "toolset=msvc-9.0")
+    ELSEIF(MSVC10)
+      SET(B2_TOOLSET "toolset=msvc-10.0")
+    ELSEIF(MSVC12)
+      SET(B2_TOOLSET "toolset=msvc-12.0")
+    ENDIF(MSVC90)
 
     IF(CMAKE_CL_64)
       ExternalProject_Add( Boost
-        URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_47_0.tar.gz
-        URL_MD5 b0d9b288627b6a57d41d425d4f467592
-        PATCH_COMMAND cmd /C "cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && bootstrap.bat"
-        CONFIGURE_COMMAND ""
-        BUILD_COMMAND cmd /C "set VS_UNICODE_OUTPUT=& cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && b2 link=static address-model=64 --build-type=minimal  --without-python  --without-math --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT}" install
+        URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_55_0.tar.gz
+        URL_MD5 93780777cfbf999a600f62883bd54b17
+        CONFIGURE_COMMAND cmd /C "cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && bootstrap.bat"
+        PATCH_COMMAND "${PATCH_EXE}" "${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost/boost/archive/iterators/transform_width.hpp" "${CMAKE_SOURCE_DIR}/dependencies/Boost/transform_width.diff"
+        BUILD_COMMAND cmd /C "set VS_UNICODE_OUTPUT=& cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && b2 ${B2_TOOLSET} link=static address-model=64 define=BOOST_CHRONO_HEADER_ONLY --build-type=minimal --with-filesystem --with-regex --with-program_options --with-system --with-thread --with-date_time --with-serialization --with-log --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT}" install
         INSTALL_COMMAND ""
         )
     ELSE()
       ExternalProject_Add( Boost
-        URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_47_0.tar.gz
-        URL_MD5 b0d9b288627b6a57d41d425d4f467592
-        PATCH_COMMAND cmd /C "cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && bootstrap.bat"
-        CONFIGURE_COMMAND ""
-        BUILD_COMMAND cmd /C "set VS_UNICODE_OUTPUT=& cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && b2 link=static address-model=32 --build-type=minimal  --without-python  --without-math --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT}" install
+        URL http://developer.nrel.gov/downloads/buildings/openstudio/src/boost_1_55_0.tar.gz
+        URL_MD5 93780777cfbf999a600f62883bd54b17
+        CONFIGURE_COMMAND cmd /C "cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && bootstrap.bat"
+        PATCH_COMMAND "${PATCH_EXE}" "${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost/boost/archive/iterators/transform_width.hpp" "${CMAKE_SOURCE_DIR}/dependencies/Boost/transform_width.diff"
+        BUILD_COMMAND cmd /C "set VS_UNICODE_OUTPUT=& cd ${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost && b2 ${B2_TOOLSET} link=static address-model=32 define=BOOST_CHRONO_HEADER_ONLY --build-type=minimal --with-filesystem --with-regex --with-program_options --with-system --with-thread --with-date_time --with-serialization --with-log --prefix=${CMAKE_BINARY_DIR}/Boost-prefix/src/Boost-install -j${CPUCOUNT}" install
         INSTALL_COMMAND ""
         )
     ENDIF()
@@ -515,34 +604,9 @@ IF(BUILD_BOOST)
   ENDIF()
 ENDIF()
 
-
-IF(BUILD_BOOST)
-  list(APPEND BoostLog_DEPENDS Boost)
-ENDIF()
-
-ExternalProject_Add( BoostLog
-  DEPENDS ${BoostLog_DEPENDS}
-  URL ${CMAKE_SOURCE_DIR}/dependencies/boost-log-1.1.tar.gz
-  URL_MD5 ae76f0c29ca42ba0dd889a9932c44999
-  PATCH_COMMAND "${CMAKE_COMMAND}" -E copy_directory ${CMAKE_SOURCE_DIR}/dependencies/BoostLog ${CMAKE_BINARY_DIR}/BoostLog-prefix/src/BoostLog
-  INSTALL_COMMAND ""
-  CMAKE_CACHE_ARGS
-  -DBOOST_ROOT:STRING=${BOOST_ROOT}
-  -DBOOST_LIBRARYDIR:STRING=${BOOST_ROOT}/lib
-  -DCMAKE_OSX_ARCHITECTURES:STRING=${CMAKE_OSX_ARCHITECTURES}
-  -DCMAKE_OSX_DEPLOYMENT_TARGET:STRING=${CMAKE_OSX_DEPLOYMENT_TARGET}
-  -DCMAKE_OSX_SYSROOT:STRING=${CMAKE_OSX_SYSROOT}
-  -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-  -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
-  -DCMAKE_CXX_FLAGS:STRING=${CMAKE_CXX_FLAGS}
-  -DCMAKE_EXE_LINKER_FLAGS:STRING=${CMAKE_EXE_LINKER_FLAGS}
-  -DCMAKE_MODULE_LINKER_FLAGS:STRING=${CMAKE_MODULE_LINKER_FLAGS}
-  -DCMAKE_SHARED_LINKER_FLAGS:STRING=${CMAKE_SHARED_LINKER_FLAGS}
-   )
-
 ExternalProject_Add( GoogleTest
-  URL ${CMAKE_SOURCE_DIR}/dependencies/gtest-1.6.0.tar.gz
-  URL_MD5 69035f444dfd565466a7d22f67cafecd
+  URL http://developer.nrel.gov/downloads/buildings/openstudio/src/gtest-1.7.0.tar.gz
+  URL_MD5 bad74f626d18f724cad4c9fe2e6ef27d
   PATCH_COMMAND "${CMAKE_COMMAND}" -E copy_directory ${CMAKE_SOURCE_DIR}/dependencies/GoogleTest ${CMAKE_BINARY_DIR}/GoogleTest-prefix/src/GoogleTest
   INSTALL_COMMAND ""
   CMAKE_CACHE_ARGS
@@ -563,7 +627,8 @@ SET(GTEST_LIB_DIR ${CMAKE_BINARY_DIR}/GoogleTest-prefix/src/GoogleTest-build)
 IF(BUILD_QT)
   IF(APPLE)
     # We're going to explicitly use the SDK specified in the configuration by the user
-    SET(APPLE_SDK_COMMAND -sdk ${CMAKE_OSX_SYSROOT} )
+    #SET(APPLE_SDK_COMMAND "-sdk \"${CMAKE_OSX_SYSROOT}\"" )
+    SET(APPLE_SDK_COMMAND "")
 
     IF (CMAKE_OSX_SYSROOT MATCHES ".*10.7.sdk")
       SET(APPLE_PATCH_COMMAND "${CMAKE_COMMAND}" -E rename "${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt/src/3rdparty/webkit/WebKitLibraries/libWebKitSystemInterfaceMountainLion.a" "${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt/src/3rdparty/webkit/WebKitLibraries/libWebKitSystemInterfaceMountainLion.a.bak" COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt/src/3rdparty/webkit/WebKitLibraries/libWebKitSystemInterfaceLion.a" "${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt/src/3rdparty/webkit/WebKitLibraries/libWebKitSystemInterfaceMountainLion.a")
@@ -575,72 +640,48 @@ IF(BUILD_QT)
     # it would appear that calling "make" in some way that CMake can detect that we are calling
     # make (and attempt to pass parameters to the child make jobs) is breaking our ability to install
     # the below code circumvents that by calling make through a call to "sh"
+    MESSAGE(WARNING "Qt5 super build is currently untested")
     ExternalProject_Add( Qt
-      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/qt-everywhere-opensource-src-4.8.5.tar.gz
-      URL_MD5 1864987bdbb2f58f8ae8b350dfdbe133
-      CONFIGURE_COMMAND ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt/configure  ${APPLE_SDK_COMMAND} -debug-and-release -opensource -openssl -arch x86 -arch x86_64 -qt-sql-sqlite -plugin-sql-sqlite -nomake examples -nomake demos -nomake docs -no-phonon -no-phonon-backend -no-qt3support -confirm-license -prefix ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install
+      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/qt-everywhere-opensource-src-5.2.1.tar.gz
+      URL_MD5 a78408c887c04c34ce615da690e0b4c8
+      CONFIGURE_COMMAND /bin/sh -c "cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt/ && ./configure -v ${APPLE_SDK_COMMAND} -debug-and-release -opensource -openssl -qt-sql-sqlite -plugin-sql-sqlite -nomake examples -nomake tests -confirm-license -prefix ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install"
       PATCH_COMMAND ${APPLE_PATCH_COMMAND}
-      BUILD_COMMAND $(MAKE) -f ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-build/Makefile      
-      INSTALL_COMMAND /bin/sh -c "cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-build && make -j1 install"
+      BUILD_COMMAND  /bin/sh -c "cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && make"
+      INSTALL_COMMAND /bin/sh -c "cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && make -j1 install"
       )
   ELSEIF(UNIX)
+    MESSAGE(WARNING "Qt5 super build is currently untested")
     ExternalProject_Add( Qt
-      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/qt-everywhere-opensource-src-4.8.5.tar.gz
-      URL_MD5 1864987bdbb2f58f8ae8b350dfdbe133
+      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/qt-everywhere-opensource-src-5.2.1.tar.gz
+      URL_MD5 a78408c887c04c34ce615da690e0b4c8
       CONFIGURE_COMMAND ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt/configure -debug-and-release -opensource -confirm-license -shared -qt-sql-sqlite -no-qt3support -openssl -nomake examples -nomake demos -nomake docs -plugindir ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install/share/openstudio/qtplugins -qtlibinfix OpenStudio -prefix ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install
       BUILD_COMMAND $(MAKE) -f ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-build/Makefile
       INSTALL_COMMAND cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-build && $(MAKE) install
       )
   ELSE()
-    find_program(NMAKE_EXE nmake)
-    
-    ExternalProject_Add( Qt
-      URL http://developer.nrel.gov/downloads/buildings/openstudio/src/qt-everywhere-opensource-src-4.8.5.tar.gz
-      URL_MD5 1864987bdbb2f58f8ae8b350dfdbe133
-      CONFIGURE_COMMAND cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && configure -debug-and-release -opensource -confirm-license -shared -plugin-sql-sqlite -no-qt3support -nomake examples -nomake docs -nomake demos -mp -prefix ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install -L ${OPENSSL_ROOT_DIR}/lib -I ${OPENSSL_ROOT_DIR}/include -openssl
-      BUILD_COMMAND cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && ${NMAKE_EXE}
-      INSTALL_COMMAND cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && ${NMAKE_EXE} install
-      )
+    MESSAGE(FATAL_ERROR "Qt5 cannot currently be built for Windows with the super build")
+    #find_program(NMAKE_EXE nmake)
+
+    #ExternalProject_Add( Qt
+    #  URL http://developer.nrel.gov/downloads/buildings/openstudio/src/qt-everywhere-opensource-src-5.2.1.tar.gz
+    #  URL_MD5 a78408c887c04c34ce615da690e0b4c8
+    #  CONFIGURE_COMMAND cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && configure -debug-and-release -opensource -confirm-license -shared -plugin-sql-sqlite -no-qt3support -nomake examples -nomake docs -nomake demos -mp -prefix ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install -L ${OPENSSL_ROOT_DIR}/lib -I ${OPENSSL_ROOT_DIR}/include -openssl
+    #  BUILD_COMMAND cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && ${NMAKE_EXE}
+    #  INSTALL_COMMAND cd ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt && ${NMAKE_EXE} install
+    #  )
   ENDIF()
 
-  SET(QT_QMAKE_EXECUTABLE ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install/bin/qmake)
+  #Update this for Windows after BUILD_QT is updated for WINDOWS
+  IF(UNIX)
+    LIST(APPEND CMAKE_PREFIX_PATH ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install/lib/cmake)
+  ENDIF()
 ENDIF()
-
-
-IF(BUILD_QT)
-  list(APPEND QJSON_DEPENDS Qt)
-ENDIF()
-
-ExternalProject_Add(QJSON
-  DEPENDS ${QJSON_DEPENDS}
-  URL http://developer.nrel.gov/downloads/buildings/openstudio/src/qjson-0.8.1.tar.gz
-  URL_MD5 4eef13da988edf8f91c260a3e1baeea9
-  PATCH_COMMAND "${CMAKE_COMMAND}" -E copy ${CMAKE_SOURCE_DIR}/dependencies/QJSON/CMakeLists.txt  ${CMAKE_BINARY_DIR}/QJSON-prefix/src/QJSON/src COMMAND "${CMAKE_COMMAND}" -E copy ${CMAKE_SOURCE_DIR}/dependencies/QJSON/QJSONConfig.cmake.in ${CMAKE_BINARY_DIR}/QJSON-prefix/src/QJSON COMMAND "${CMAKE_COMMAND}" -E copy ${CMAKE_SOURCE_DIR}/dependencies/QJSON/qjson_export.h ${CMAKE_BINARY_DIR}/QJSON-prefix/src/QJSON/src
-
-  CMAKE_CACHE_ARGS
-  -DCMAKE_OSX_ARCHITECTURES:STRING=${CMAKE_OSX_ARCHITECTURES}
-  -DCMAKE_OSX_DEPLOYMENT_TARGET:STRING=${CMAKE_OSX_DEPLOYMENT_TARGET}
-  -DCMAKE_OSX_SYSROOT:STRING=${CMAKE_OSX_SYSROOT}
-  -DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}
-  -DCMAKE_CXX_COMPILER:STRING=${CMAKE_CXX_COMPILER}
-  -DCMAKE_CXX_FLAGS:STRING=${CMAKE_CXX_FLAGS}
-  -DCMAKE_EXE_LINKER_FLAGS:STRING=${CMAKE_EXE_LINKER_FLAGS}
-  -DCMAKE_MODULE_LINKER_FLAGS:STRING=${CMAKE_MODULE_LINKER_FLAGS}
-  -DCMAKE_SHARED_LINKER_FLAGS:STRING=${CMAKE_SHARED_LINKER_FLAGS}
-  -DQT_QMAKE_EXECUTABLE:STRING=${QT_QMAKE_EXECUTABLE}
-  -DCMAKE_INSTALL_PREFIX:STRING=${CMAKE_BINARY_DIR}/QJSON-prefix/src/QJSON-install
-)
 
 
 set(OpenStudioCore_DIR ${CMAKE_BINARY_DIR}/OpenStudioCore-prefix/src/OpenStudioCore-build)
 
-set(BoostLog_DIR "${CMAKE_BINARY_DIR}/BoostLog-prefix/src/BoostLog-build")
-set(QJSON_DIR "${CMAKE_BINARY_DIR}/QJSON-prefix/src/QJSON-build")
-
 # Set up the dependencies for OpenStudioCore
-SET(OpenStudioCore_DEPENDS BoostLog)
-LIST(APPEND OpenStudioCore_DEPENDS GoogleTest)
-LIST(APPEND OpenStudioCore_DEPENDS QJSON)
+SET(OpenStudioCore_DEPENDS GoogleTest)
 
 IF(BUILD_QT)
   LIST(APPEND OpenStudioCore_DEPENDS Qt)
@@ -679,6 +720,7 @@ ExternalProject_Add( OpenStudioCore
     -DENERGYPLUS_VERSION:STRING=${ENERGYPLUS_VERSION}
     -DBUILD_DOCUMENTATION:BOOL=${BUILD_DOCUMENTATION}
     -DBUILD_CSHARP_BINDINGS:BOOL=${BUILD_CSHARP_BINDINGS}
+    -DBUILD_JAVA_BINDINGS:BOOL=${BUILD_JAVA_BINDINGS}
     -DBUILD_V8_BINDINGS:BOOL=${BUILD_V8_BINDINGS}
     -DBUILD_NODE_MODULES:BOOL=${BUILD_NODE_MODULES}
     -DBUILD_PYTHON_BINDINGS:BOOL=${BUILD_PYTHON_BINDINGS}
@@ -700,14 +742,21 @@ ExternalProject_Add( OpenStudioCore
     -DCMAKE_MODULE_LINKER_FLAGS:STRING=${CMAKE_MODULE_LINKER_FLAGS}
     -DCMAKE_SHARED_LINKER_FLAGS:STRING=${CMAKE_SHARED_LINKER_FLAGS}
     -DCMAKE_INSTALL_PREFIX:STRING=${CMAKE_INSTALL_PREFIX}
+    -DCMAKE_PREFIX_PATH:STRING=${CMAKE_PREFIX_PATH}
     -DCMAKE_VERSION_MAJOR:STRING=${CMAKE_VERSION_MAJOR}
     -DCMAKE_VERSION_MINOR:STRING=${CMAKE_VERSION_MINOR}
     -DCMAKE_VERSION_PATCH:STRING=${CMAKE_VERSION_PATCH}
     -DCMAKE_VERSION_BUILD:STRING=${CMAKE_VERSION_BUILD}
-    -DSUBVERSION_REVISION:STRING=${SUBVERSION_REVISION}
     -DBOOST_ROOT:STRING=${BOOST_ROOT}
     -DBOOST_LIBRARYDIR:STRING=${BOOST_ROOT}/lib
-    -DQT_QMAKE_EXECUTABLE:STRING=${QT_QMAKE_EXECUTABLE}
+    -DQt5Widgets_DIR:STRING=${Qt5Widgets_DIR}
+    -DQt5Sql_DIR:STRING=${Qt5Sql_DIR}
+    -DQt5Network_DIR:STRING=${Qt5Network_DIR}
+    -DQt5Xml_DIR:STRING=${Qt5Xml_DIR}
+    -DQt5WebKit_DIR:STRING=${Qt5WebKit_DIR}
+    -DQt5WebKitWidgets_DIR:STRING=${Qt5WebKitWidgets_DIR}
+    #-DQt5WinExtras_DIR:STRING=${Qt5WinExtras_DIR}
+    -DQt5Concurrent_DIR:STRING=${Qt5Concurrent_DIR}
     -DSWIG_EXECUTABLE:STRING=${SWIG_EXECUTABLE}
     -DRUBY_EXECUTABLE:STRING=${RUBY_EXECUTABLE}
     -DNODE_BIN_DIR:STRING=${NODE_BIN_DIR}
@@ -716,8 +765,6 @@ ExternalProject_Add( OpenStudioCore
     -DRUBY_LIBRARY:STRING=${RUBY_LIBRARY}
     -DDOXYGEN_EXECUTABLE:STRING=${DOXYGEN_EXECUTABLE}
     -DDOXYGEN_DOT_EXECUTABLE:STRING=${DOXYGEN_DOT_EXECUTABLE}
-    -DBoostLog_DIR:STRING=${BoostLog_DIR}
-    -DQJSON_DIR:STRING=${QJSON_DIR}
     -DPACKAGE_RADIANCE_AND_ENERGYPLUS:BOOL=${PACKAGE_RADIANCE_AND_ENERGYPLUS}
     -DENERGYPLUS_LOCATION:PATH=${ENERGYPLUS_LOCATION}
     -DRADIANCE_LOCATION:PATH=${RADIANCE_LOCATION}
@@ -726,17 +773,26 @@ ExternalProject_Add( OpenStudioCore
 )
 
 if (BUILD_QT AND MSVC)
-  # Install Qt DLL's to Release directory. This is brute force-ish, it copies all files in the bin folder
-  ExternalProject_Add_Step(OpenStudioCore InstallQtReleaseDLLs
-     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install/bin ${CMAKE_BINARY_DIR}/OpenStudioCore-prefix/src/OpenStudioCore-build/Products/Release
-     DEPENDERS configure
-   )     
-   
-  # Install Qt DLL's to Debug directory. This is brute force-ish, it copies all files in the bin folder
-  ExternalProject_Add_Step(OpenStudioCore InstallQtDebugDLLs
-     COMMAND ${CMAKE_COMMAND} -E copy_directory ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install/bin ${CMAKE_BINARY_DIR}/OpenStudioCore-prefix/src/OpenStudioCore-build/Products/Debug
-     DEPENDERS configure
-   )     
+  file(GLOB dlls ${CMAKE_BINARY_DIR}/Qt-prefix/src/Qt-install/bin/*.dll)
+  foreach(dll ${dlls})
+    get_filename_component(filename "${dll}" NAME_WE)
+    ExternalProject_Add_Step(OpenStudioCore "Install${filename}ReleaseDLL"
+       COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dll}" "${CMAKE_BINARY_DIR}/OpenStudioCore-prefix/src/OpenStudioCore-build/Products/Release"
+       DEPENDERS configure
+     )
+    ExternalProject_Add_Step(OpenStudioCore "Install${filename}DebugDLL"
+       COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dll}" "${CMAKE_BINARY_DIR}/OpenStudioCore-prefix/src/OpenStudioCore-build/Products/Debug"
+       DEPENDERS configure
+     )
+    ExternalProject_Add_Step(OpenStudioCore "Install${filename}RelWithDebInfoDLL"
+       COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dll}" "${CMAKE_BINARY_DIR}/OpenStudioCore-prefix/src/OpenStudioCore-build/Products/RelWithDebInfo"
+       DEPENDERS configure
+     )
+    ExternalProject_Add_Step(OpenStudioCore "Install${filename}MinSizeRelDLL"
+       COMMAND ${CMAKE_COMMAND} -E copy_if_different "${dll}" "${CMAKE_BINARY_DIR}/OpenStudioCore-prefix/src/OpenStudioCore-build/Products/MinSizeRel"
+       DEPENDERS configure
+     )
+  endforeach()
 endif()
 
 if (BUILD_RUBY AND MSVC)

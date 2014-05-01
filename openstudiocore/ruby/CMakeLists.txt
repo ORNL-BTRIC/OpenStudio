@@ -37,7 +37,7 @@ FOREACH( f ${RUBY_TEST_SRC} )
       IF(MSVC)
         ADD_TEST(NAME "RubyTest-${FILE_NAME}-${TEST_NAME}"
           COMMAND "${CMAKE_COMMAND}" -E chdir "${CMAKE_CURRENT_BINARY_DIR}/$<CONFIGURATION>"
-          "$<TARGET_FILE:ruby_cpp>" -I "${RUBY_RUBY_LIB_DIR}" -I. "openstudio_test.rb" "--name=test_${TEST_NAME}"
+          "$<TARGET_FILE:ruby_cpp>" -I "${RUBY_RUBY_LIB_DIR}" -I "${RUBY_RUBY_LIB_DIR}/i386-mingw32" -I. "openstudio_test.rb" "--name=test_${TEST_NAME}"
         )
       ELSE()
         # $<CONFIGURATION> may resolve to 'Release' on Mac or Linux but directory will not exist
@@ -72,11 +72,21 @@ FILE( COPY "${CMAKE_SOURCE_DIR}/ruby/cloud/worker_script.sh.template" DESTINATIO
 # install qt plugins and fixup for apple
 
 IF( WIN32 OR APPLE )
-  install( PROGRAMS "${QT_QSQLITE_PLUGIN_RELEASE}"
+  get_target_property(QT_QSQLITE_PLUGIN Qt5::QSQLiteDriverPlugin LOCATION)
+
+  install( PROGRAMS "${QT_QSQLITE_PLUGIN}"
            DESTINATION "Ruby/openstudio/sqldrivers/"
          )
 
-  get_filename_component(QSQLITE_PLUGIN_NAME "${QT_QSQLITE_PLUGIN_RELEASE}" NAME)
+  get_filename_component(QSQLITE_PLUGIN_NAME "${QT_QSQLITE_PLUGIN}" NAME)
+
+  IF( WIN32 )
+    get_target_property(QT_WINDOWS_PLUGIN Qt5::QWindowsIntegrationPlugin LOCATION)
+
+    install( PROGRAMS "${QT_WINDOWS_PLUGIN}"
+             DESTINATION "Ruby/openstudio/platforms/" 
+           )
+  ENDIF()
 
   IF(APPLE)
     SET(QTPLUGIN "\${CMAKE_INSTALL_PREFIX}/Ruby/openstudio/sqldrivers/${QSQLITE_PLUGIN_NAME}")
@@ -136,7 +146,6 @@ IF (BUILD_RUBY_GEM)
       execute_process(COMMAND \"${CMAKE_COMMAND}\" -E copy_directory \"\${CMAKE_INSTALL_PREFIX}/share/openstudio/osversion\" \"${GEMDIR}/share/openstudio/osversion\")
 
       IF( qtinstalled )
-        file(WRITE \"${GEMDIR}/lib/qt.conf\" \"\")
         execute_process(COMMAND \"${CMAKE_COMMAND}\" -E copy_directory \"${QT_PLUGINS_DIR}\" \"${GEMDIR}/lib/plugins\")
       ENDIF()
 
@@ -196,10 +205,17 @@ ENDIF()
 
 # run all the unit tests
 IF( ENABLE_TEST_RUNNER_TARGETS )
-  ADD_CUSTOM_TARGET( ruby_run_tests
-    ${CMAKE_COMMAND} -E chdir "${RUBY_RUN_DIR}" "${RUBY_EXECUTABLE}" -I. -I"${RUBY_RUBY_LIB_DIR}" "openstudio_test.rb"
-    DEPENDS ${ALL_RUBY_BINDING_TARGETS} ruby_cpp ResultsViewer_resources openstudio_energyplus_resources
-  )
+  IF(MSVC)
+    ADD_CUSTOM_TARGET( ruby_run_tests
+      ${CMAKE_COMMAND} -E chdir "${RUBY_RUN_DIR}" "${RUBY_EXECUTABLE}" -I "${RUBY_RUBY_LIB_DIR}" -I "${RUBY_RUBY_LIB_DIR}/i386-mingw32" -I. "openstudio_test.rb"
+      DEPENDS ${ALL_RUBY_BINDING_TARGETS} ruby_cpp ResultsViewer_resources openstudio_energyplus_resources
+    )  
+  ELSE()
+    ADD_CUSTOM_TARGET( ruby_run_tests
+      ${CMAKE_COMMAND} -E chdir "${RUBY_RUN_DIR}" "${RUBY_EXECUTABLE}" -I "${RUBY_RUBY_LIB_DIR}" -I. "openstudio_test.rb"
+      DEPENDS ${ALL_RUBY_BINDING_TARGETS} ruby_cpp ResultsViewer_resources openstudio_energyplus_resources
+    )  
+  ENDIF()
 ENDIF()
 
 # install the files

@@ -1433,7 +1433,8 @@ namespace detail {
 
       if (step.isWorkItem()) {
         runmanager::WorkItem workItem = step.workItem();
-        if (workItem.type == runmanager::JobType::UserScript) {
+        if (workItem.type == runmanager::JobType::UserScript
+            || workItem.type == runmanager::JobType::Ruby) {
           runmanager::RubyJobBuilder rjb(workItem);
           rjb.setIncludeDir(rubyIncludeDirectory);
           workItem = rjb.toWorkItem();
@@ -1937,15 +1938,14 @@ namespace detail {
               "variable_index",
               boost::function<InputVariable (const QVariant&)>(boost::bind(detail::InputVariable_Impl::factoryFromVariant,_1,measure,version)));
         Q_FOREACH(const InputVariable var,vars) {
-          workflowIntermediate.push_back(std::make_pair<int,WorkflowStep>(
-              index,WorkflowStep(var,boost::optional<runmanager::WorkItem>())));
+          workflowIntermediate.push_back(std::make_pair(index,WorkflowStep(var,boost::optional<runmanager::WorkItem>())));
           ++index;
         }
       }
       else {
         int index = stepMap["workflow_index"].toInt();
         WorkflowStep step = WorkflowStep_Impl::factoryFromVariant(workflowListItem,version);
-        workflowIntermediate.push_back(std::make_pair<int,WorkflowStep>(index,step));
+        workflowIntermediate.push_back(std::make_pair(index,step));
       }
 
     }

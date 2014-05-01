@@ -36,16 +36,47 @@
 
 #include <boost/bind.hpp>
 
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
 #include <Windows.h>
 #else
 #include <signal.h>
+#include <sys/wait.h>
 #endif
 
 
 namespace openstudio {
 namespace runmanager {
 namespace detail {
+  MyQProcess::MyQProcess()
+    : m_exitedCount(0)
+  {
+  }
+
+  void MyQProcess::checkProcessStatus()
+  {
+#ifndef Q_OS_WIN
+    // Check for process status if the exit was not handled correctly. 
+
+    Q_PID qpid = pid();
+
+    if (qpid != 0 && atEnd() && state() != QProcess::Starting)
+    {
+      pid_t result = waitpid(qpid, 0, WNOHANG);
+      if (result != 0 && m_exitedCount != -1)
+      {
+        LOG(Debug, "PROCESS EXITED");
+        ++m_exitedCount;
+        setProcessState(QProcess::NotRunning);
+        if (m_exitedCount > 2)
+        {
+          m_exitedCount = -1;
+          emit zombied(error());
+        }
+      }
+    }
+
+#endif
+  }
 
   LocalProcess::LocalProcess(const openstudio::runmanager::ToolInfo &t_tool,
           const std::vector<std::pair<openstudio::path, openstudio::path> > &t_requiredFiles,
@@ -66,7 +97,7 @@ namespace detail {
     QFileInfo qfi(openstudio::toQString(t_tool.localBinPath));
     if (!qfi.isFile() || !qfi.isExecutable())
     {
-      throw std::runtime_error("Unable to find valid executable while creating local process: " + toString(t_tool.localBinPath.external_file_string()));
+      throw std::runtime_error("Unable to find valid executable while creating local process: " + toString(t_tool.localBinPath.native()));
     }
 
     for (std::vector<std::pair<openstudio::path, openstudio::path> >::const_iterator itr = m_requiredFiles.begin();
@@ -99,7 +130,7 @@ namespace detail {
           m_copiedRequiredFiles.insert(itr->second);
         }
       } else if (exists(frompath) && is_directory(frompath)) {
-        typedef boost::filesystem::basic_directory_iterator<openstudio::path> diritr;
+        typedef boost::filesystem::directory_iterator diritr;
 
         diritr begin(frompath);
         diritr end;
@@ -136,6 +167,8 @@ namespace detail {
         this, SLOT(processError(QProcess::ProcessError)));
     connect(&m_process, SIGNAL(finished(int, QProcess::ExitStatus)), 
         this, SLOT(processFinished(int, QProcess::ExitStatus)));
+    connect(&m_process, SIGNAL(zombied(QProcess::ProcessError)),
+        this, SLOT(processZombied(QProcess::ProcessError)));
 
     connect(&m_process, SIGNAL(readyReadStandardError()), 
          this, SLOT(processReadyReadStandardError()));
@@ -196,7 +229,7 @@ namespace detail {
 
     // set up path to be binary directory to catch ancillary tools
     QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     env.insert("PATH", openstudio::toQString(m_tool.localBinPath.parent_path()) + ";" + env.value("PATH"));
 #else
     env.insert("PATH", openstudio::toQString(m_tool.localBinPath.parent_path()) + ":" + env.value("PATH"));
@@ -230,7 +263,7 @@ namespace detail {
   {
     if (t_process.state() == QProcess::Running)
     {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
       PROCESS_INFORMATION *pinfo = (PROCESS_INFORMATION*)t_process.pid();
       if (pinfo)
       {
@@ -323,18 +356,20 @@ namespace detail {
   void LocalProcess::directoryChanged(const QString &str)
   {
     FileSet fs = dirFiles(openstudio::toQString(m_outdir));
-    
+
     std::vector<FileSet::value_type> diff;
-    
+
     std::set_symmetric_difference(fs.begin(), fs.end(), 
                         m_outfiles.begin(), m_outfiles.end(),
                         std::back_inserter(diff));
- 
+
     m_outfiles = fs;
 
 //    monitorFiles(diff.begin(), diff.end());
-   
+
     std::for_each(diff.begin(), diff.end(), boost::bind(&LocalProcess::emitUpdatedFileInfo, this, _1));
+
+    m_process.checkProcessStatus();
   }
 
 
@@ -403,18 +438,18 @@ namespace detail {
   void LocalProcess::cleanUpRequiredFiles()
   {
     for (std::set<openstudio::path>::const_iterator itr = m_copiedRequiredFiles.begin();
-         itr != m_copiedRequiredFiles.end();
-         ++itr)
+        itr != m_copiedRequiredFiles.end();
+        ++itr)
     {
       LOG(Debug, "cleanUpRequiredFiles: " << openstudio::toString(*itr));
-	    try {
+      try {
         boost::filesystem::remove(*itr);
-	    } catch (const std::exception &e) {
+      } catch (const std::exception &e) {
         LOG(Trace, "Unable to remove file: " << e.what());
-		    // no error if it doesn't manage to delete it
-	    }
+        // no error if it doesn't manage to delete it
+      }
 
-	    try {
+      try {
         openstudio::path p = itr->parent_path();
 
         while (!p.empty() && !relativePath(p, m_outdir).empty() && m_outdir != p)
@@ -423,11 +458,27 @@ namespace detail {
           boost::filesystem::remove(p);
           p = p.parent_path();
         }
-	    } catch (const std::exception &e) {
+      } catch (const std::exception &e) {
         LOG(Trace, "Unable to remove directory: " << e.what());
-		    // no error if it doesn't manage to delete it
-	    }
+        // no error if it doesn't manage to delete it
+      }
     }
+  }
+
+  void LocalProcess::processZombied(QProcess::ProcessError /*t_e*/)
+  {
+    m_fileCheckTimer.stop();
+    LOG(Info, "Process appears to be zombied"); 
+
+    // but this isn't necessarily an error because it's probably due to miscaught signals.
+    //emit error(t_e);
+
+    QCoreApplication::processEvents();
+    directoryChanged(openstudio::toQString(m_outdir));
+
+    emit finished(0, QProcess::NormalExit);
+    emitStatusChanged(AdvancedStatus(AdvancedStatusEnum::Idle));
+
   }
 
   void LocalProcess::processError(QProcess::ProcessError t_e)
@@ -454,6 +505,9 @@ namespace detail {
       //directoryChanged(openstudio::toQString(m_outdir));
       emit error(t_e);
     }
+
+    QCoreApplication::processEvents();
+    directoryChanged(openstudio::toQString(m_outdir));
   }
 
   void LocalProcess::handleOutput(const QByteArray &qba, bool stderror)

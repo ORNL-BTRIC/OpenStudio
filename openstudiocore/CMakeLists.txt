@@ -2,6 +2,7 @@ CMAKE_MINIMUM_REQUIRED( VERSION 2.8.7 )
  
 PROJECT(OpenStudioCore)
 
+CMAKE_POLICY(SET CMP0020 NEW)
 ###############################################################################
 # Project version information
 SET(CMAKE_VERSION_BUILD "Unknown" CACHE STRING "Build number") # git sha
@@ -11,7 +12,7 @@ SET(OPENSTUDIO_VERSION "${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}.${CMAKE_VE
 SET(OPENSTUDIO_LONG_VERSION "${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}.${CMAKE_VERSION_PATCH}.${CMAKE_VERSION_BUILD}")
 
 # EnergyPlus Idd version 
-SET(ENERGYPLUS_VERSION "8.0" CACHE INTERNAL "EnergyPlus Version")
+SET(ENERGYPLUS_VERSION "8.1" CACHE INTERNAL "EnergyPlus Version")
 
 # Dakota version
 SET(DAKOTA_VERSION "5.3.1")
@@ -43,6 +44,10 @@ OPTION( BUILD_DOCUMENTATION "Build Documentation" OFF )
 # Build CSharp bindings
 # Requires: SWIG
 OPTION( BUILD_CSHARP_BINDINGS "Build CSharp bindings" OFF )
+
+# Build Java bindings
+# Requires: SWIG
+OPTION( BUILD_JAVA_BINDINGS "Build Java bindings" OFF )
 
 # Build V8 Node bindings
 # Requires: SWIG, Node
@@ -106,9 +111,12 @@ MARK_AS_ADVANCED( REQUIRE_DAKOTA )
 # Use PCH
 OPTION( USE_PCH "Use precompiled headers" OFF )
 
-# Enable support for boost > 1.42 ish by forcing boost_filesystem_version 2
-ADD_DEFINITIONS(-DBOOST_FILESYSTEM_VERSION=2)
+# Enable support for boost > 1.49 ish by forcing boost_filesystem_version 3
+ADD_DEFINITIONS(-DBOOST_FILESYSTEM_VERSION=3)
 
+IF(WIN32)
+  ADD_DEFINITIONS(-DNOMINMAX)
+ENDIF()
 
 IF(MSVC)
   # Build with Multiple Processes
@@ -176,7 +184,7 @@ ENDIF( BUILD_TESTING )
 # Compiler and system specific options
 IF(UNIX)
   # all warnings
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -fno-strict-aliasing -Winvalid-pch")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -fPIC -fno-strict-aliasing -Winvalid-pch -Wnon-virtual-dtor")
   IF(APPLE)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-overloaded-virtual -ftemplate-depth=1024")
   ELSE()
@@ -309,11 +317,11 @@ IF( BUILD_WITH_OPENSSL )
   ENDIF()
   
   #enable libssh
-  ADD_DEFINITIONS(-DLIBSSH_STATIC)
+  #ADD_DEFINITIONS(-DLIBSSH_STATIC)
   
   # add sub directory
-  ADD_SUBDIRECTORY( src/libssh )
-  INCLUDE_DIRECTORIES( SYSTEM src/libssh/include/ )
+  #ADD_SUBDIRECTORY( src/libssh )
+  #INCLUDE_DIRECTORIES( SYSTEM src/libssh/include/ )
       
 ENDIF()
 
@@ -350,6 +358,15 @@ ENDIF( BUILD_DOCUMENTATION )
 IF ( BUILD_CSHARP_BINDINGS )
   SET( ALL_CSHARP_BINDING_TARGETS "" ) # global list
 ENDIF()
+
+# JAVA
+IF ( BUILD_JAVA_BINDINGS )
+  find_package(JNI)
+  find_package(Java)
+  SET( ALL_JAVA_BINDING_TARGETS "" ) # global list
+  SET( ALL_JAVA_SRC_DIRECTORIES "" ) # global list
+ENDIF()
+
 
 IF(BUILD_NODE_MODULES)
   ADD_DEFINITIONS(-DBUILD_NODE_MODULE)
@@ -457,7 +474,7 @@ IF( BUILD_DOCUMENTATION )
   FOREACH( D ${doxygen_directories} )
     STRING( REPLACE "/" "_" DOC_NAME ${D} )
     IF( ${D} MATCHES "utilities/idd" )
-      # We want to build the idd documentation seperately because of the generated files
+      # We want to build the idd documentation separately because of the generated files
       SET( DOXY_INPUT_DIR "\"${CMAKE_SOURCE_DIR}/src/${D}\"" )
       SET( DOXY_ADDITIONAL_DIR "\"${CMAKE_BINARY_DIR}/src/${D}\"" )
       SET( DOXY_ADDITIONAL_FILES "" )
@@ -546,32 +563,25 @@ ENDIF (WIN32)
 
 MARK_AS_ADVANCED(Boost_DIR)
 
-SET( Boost_ADDITIONAL_VERSIONS "1.40" )
-FIND_PACKAGE( Boost 1.40.0 REQUIRED COMPONENTS filesystem regex program_options system thread date_time serialization)
+SET( Boost_ADDITIONAL_VERSIONS "1.55" )
+FIND_PACKAGE( Boost 1.55.0 REQUIRED COMPONENTS filesystem regex program_options system thread date_time serialization log)
 INCLUDE_DIRECTORIES(SYSTEM ${Boost_INCLUDE_DIR} )
 MARK_AS_ADVANCED( Boost_LIB_DIAGNOSTIC_DEFINITIONS )
-
-# include after other boost include directories for cases where boost version < 1.47
-INCLUDE_DIRECTORIES( SYSTEM ${CMAKE_SOURCE_DIR}/../dependencies/boost_geometry )
 
 # require these run time checks
 add_definitions(-DBOOST_UBLAS_CHECK_ENABLE)
 add_definitions(-DBOOST_UBLAS_TYPE_CHECK)
 add_definitions(-DBOOST_UBLAS_NO_STD_CERR)
 
-# Boost-log
-ADD_DEFINITIONS( -DBOOST_LOG_NO_LIB ) # disable autolinking
-ADD_DEFINITIONS( -DBOOST_LOG_SETUP_NO_LIB ) # disable autolinking
+# use chrono as a header only library
+add_definitions(-DBOOST_CHRONO_HEADER_ONLY)
 
-find_package(BoostLog REQUIRED)
-INCLUDE_DIRECTORIES( SYSTEM ${BoostLog_INCLUDE_DIRS} )
-LINK_DIRECTORIES( ${BoostLog_LIBRARY_DIRS} )
-
-# QJSON 
-
-find_package(QJSON REQUIRED)
-INCLUDE_DIRECTORIES( SYSTEM ${QJSON_INCLUDE_DIR} )
-LINK_DIRECTORIES( ${QJSON_LIBRARY_DIRS} )
+# check if boost is being linked dynamically
+# DLM: should we allow this on Unix or should we force static for all platforms?
+STRING(REGEX MATCH "^.*libboost_log.so$" BOOST_IS_DYN_LIBS "${Boost_LOG_LIBRARY_RELEASE}" )
+IF (BOOST_IS_DYN_LIBS)
+  add_definitions(-DBOOST_ALL_DYN_LINK)
+ENDIF()
 
 # SQLite definitions, used in sqlite and litesql
 ADD_DEFINITIONS( -DSQLITE_THREADSAFE=1 ) # 1 is default, serial access
@@ -580,63 +590,60 @@ ADD_DEFINITIONS( -DSQLITE_THREADSAFE=1 ) # 1 is default, serial access
 
 #--------------------------------------------------------------------------------
 # Qt
-FIND_PACKAGE (Qt4 4.8.0 COMPONENTS QtCore QtGui QtSql QtNetwork QtXml QtXmlPatterns QtWebKit REQUIRED)
+FIND_PACKAGE (Qt5Widgets REQUIRED)
+FIND_PACKAGE (Qt5Sql REQUIRED)
+FIND_PACKAGE (Qt5Network REQUIRED)
+FIND_PACKAGE (Qt5Xml REQUIRED)
+FIND_PACKAGE (Qt5WebKit REQUIRED)
+FIND_PACKAGE (Qt5WebKitWidgets REQUIRED)
+#FIND_PACKAGE (Qt5WinExtras)
+FIND_PACKAGE (Qt5Concurrent REQUIRED)
+MARK_AS_ADVANCED(Qt5Concurrent_DIR)
+MARK_AS_ADVANCED(Qt5Core_DIR)
+MARK_AS_ADVANCED(Qt5Gui_DIR)
+MARK_AS_ADVANCED(Qt5Gui_EGL_LIBRARY)
+MARK_AS_ADVANCED(Qt5Multimedia_DIR)
+MARK_AS_ADVANCED(Qt5MultimediaWidgets_DIR)
+MARK_AS_ADVANCED(Qt5Network_DIR)
+MARK_AS_ADVANCED(Qt5OpenGL_DIR)
+MARK_AS_ADVANCED(Qt5Positioning_DIR)
+MARK_AS_ADVANCED(Qt5PrintSupport_DIR)
+MARK_AS_ADVANCED(Qt5Qml_DIR)
+MARK_AS_ADVANCED(Qt5Quick_DIR)
+MARK_AS_ADVANCED(Qt5Sensors_DIR)
+MARK_AS_ADVANCED(Qt5Sql_DIR)
+MARK_AS_ADVANCED(Qt5WebKit_DIR)
+MARK_AS_ADVANCED(Qt5WebKitWidgets_DIR)
+MARK_AS_ADVANCED(Qt5Widgets_DIR)
+#MARK_AS_ADVANCED(Qt5WinExtras_DIR)
+MARK_AS_ADVANCED(Qt5Xml_DIR)
 
-# Newer versions of cmake have a sqlite plugin finder built into the Qt package finder.  
-# This is for older versions.  Sometime before cmake version 2.8.7.
-IF( NOT QT_QSQLITE_PLUGIN_RELEASE )
-  SET(CMAKE_FIND_LIBRARY_SUFFIXES_DEFAULT ${CMAKE_FIND_LIBRARY_SUFFIXES})
-  SET(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_SHARED_MODULE_SUFFIX} ${CMAKE_SHARED_LIBRARY_SUFFIX})
-  FIND_LIBRARY( QT_QSQLITE_PLUGIN_RELEASE NAMES qsqlite qsqlite4 HINTS "${QT_PLUGINS_DIR}/sqldrivers" )
-  SET(CMAKE_FIND_LIBRARY_SUFFIXES ${CMAKE_FIND_LIBRARY_SUFFIXES_DEFAULT})
-ENDIF()
-
-INCLUDE_DIRECTORIES(SYSTEM ${QT_INCLUDE_DIR} )
-#LIST( APPEND CMAKE_PROGRAM_PATH ${QT_LIBRARY_DIR})
-#LIST( APPEND CMAKE_LIBRARY_PATH ${QT_LIBRARY_DIR})
-#--------------------------------------------------------------------------------
-# QT_USE_FILE is a variable defined by FIND_PACKAGE( Qt4 ) that contains a path to
-# a CMake script that sets up this directory for building with Qt4
-SET(QT_INCLUDE_DIRS_NO_SYSTEM false)
-
-INCLUDE( ${QT_USE_FILE} )
-MARK_AS_ADVANCED( QT_QMAKE_EXECUTABLE QT_QTMOTIF_INCLUDE_DIR QT_QTMOTIF_LIBRARY_DEBUG QT_QTMOTIF_LIBRARY_RELEASE )
-
-# This sets the windows build that will need the special winmain@16 call. Qt provides
-#  this for us in the qtmain.lib file. Using this cmake code will ensure we have it
-#  linked into our build. Not needed on Unix/OS X/Linux which is why we have the 
-#  IF(WIN32) conditional.
-IF (WIN32)
-    SET (QT_USE_QTMAIN TRUE)
-ENDIF (WIN32)
-
-#--------------------------------------------------------------------------------
-# QT_USE_FILE is a variable defined by FIND_PACKAGE( Qt4 ) that contains a path to
-# a CMake script that sets up this directory for building with Qt4
-INCLUDE( ${QT_USE_FILE} )
+SET (CMAKE_AUTOMOC OFF)
 
 #Adding libraries to the list of includes
-INCLUDE_DIRECTORIES( SYSTEM ${QT_QTGUI_INCLUDE_DIR} )
-INCLUDE_DIRECTORIES( SYSTEM ${QT_QTSQL_INCLUDE_DIR} )
-INCLUDE_DIRECTORIES( SYSTEM ${QT_QTNETWORK_INCLUDE_DIR} )
-INCLUDE_DIRECTORIES( SYSTEM ${QT_QTXML_INCLUDE_DIR} )
-INCLUDE_DIRECTORIES( SYSTEM ${QT_QTXMLPATTERNS_INCLUDE_DIR} )
-INCLUDE_DIRECTORIES( SYSTEM ${QT_QTWEBKIT_INCLUDE_DIR} )
+INCLUDE_DIRECTORIES( ${Qt5Widgets_INCLUDE_DIRS} )
+INCLUDE_DIRECTORIES( ${Qt5Sql_INCLUDE_DIRS} )
+INCLUDE_DIRECTORIES( ${Qt5Network_INCLUDE_DIRS} )
+INCLUDE_DIRECTORIES( ${Qt5Xml_INCLUDE_DIRS} )
+INCLUDE_DIRECTORIES( ${Qt5WebKit_INCLUDE_DIRS} )
+INCLUDE_DIRECTORIES( ${Qt5WebKitWidgets_INCLUDE_DIRS} )
+#INCLUDE_DIRECTORIES( ${Qt5WinExtras_INCLUDE_DIRS} )
+INCLUDE_DIRECTORIES( ${Qt5Concurrent_INCLUDE_DIRS} )
+
+#INCLUDE_DIRECTORIES is supposed to be a set, however there are tons of Qt duplicate includes
+get_directory_property(dupdirs DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} INCLUDE_DIRECTORIES)
+list(REMOVE_DUPLICATES dupdirs)
+set_directory_properties(PROPERTIES INCLUDE_DIRECTORIES "${dupdirs}")
 
 # list of all Qt libs and dependencies we are using
-LIST( APPEND QT_LIBS ${QT_QTMAIN_LIBRARY})
-LIST( APPEND QT_LIBS ${QT_QTCORE_LIBRARY})
-LIST( APPEND QT_LIBS ${QT_QTCORE_LIB_DEPENDENCIES})
-LIST( APPEND QT_LIBS ${QT_QTGUI_LIBRARY})
-LIST( APPEND QT_LIBS ${QT_QTGUI_LIB_DEPENDENCIES})
-LIST( APPEND QT_LIBS ${QT_QTSQL_LIBRARY})
-LIST( APPEND QT_LIBS ${QT_QTNETWORK_LIBRARY})
-LIST( APPEND QT_LIBS ${QT_QTNETWORK_LIB_DEPENDENCIES})
-LIST( APPEND QT_LIBS ${QT_QTXML_LIBRARY})
-LIST( APPEND QT_LIBS ${QT_QTXMLPATTERNS_LIBRARY})
-LIST( APPEND QT_LIBS ${QT_QTWEBKIT_LIBRARY})
-
-#QT_QSQLITE_PLUGIN_RELEASE
+LIST( APPEND QT_LIBS ${Qt5Widgets_LIBRARIES})
+LIST( APPEND QT_LIBS ${Qt5Sql_LIBRARIES})
+LIST( APPEND QT_LIBS ${Qt5Network_LIBRARIES})
+LIST( APPEND QT_LIBS ${Qt5Xml_LIBRARIES})
+LIST( APPEND QT_LIBS ${Qt5WebKit_LIBRARIES})
+LIST( APPEND QT_LIBS ${Qt5WebKitWidgets_LIBRARIES})
+#LIST( APPEND QT_LIBS ${Qt5WinExtras_LIBRARIES})
+LIST( APPEND QT_LIBS ${Qt5Concurrent_LIBRARIES})
 
 
 ###############################################################################
@@ -744,6 +751,11 @@ IF(BUILD_CSHARP_BINDINGS)
   ADD_SUBDIRECTORY( csharp )
 ENDIF(BUILD_CSHARP_BINDINGS)
 
+# java, after loading projects
+IF(BUILD_JAVA_BINDINGS)
+  ADD_SUBDIRECTORY( java )
+ENDIF(BUILD_JAVA_BINDINGS)
+
 # v8-node
 IF(BUILD_NODE_MODULES)
   ADD_SUBDIRECTORY( v8-node )
@@ -772,6 +784,12 @@ if ( BUILD_CSHARP_BINDINGS )
   ADD_DEPENDENCIES( ALL_CSHARP_BINDINGS csharp_sdk ${ALL_CSHARP_BINDING_TARGETS} )
 endif ( BUILD_CSHARP_BINDINGS )
 
+if ( BUILD_JAVA_BINDINGS )
+  ADD_CUSTOM_TARGET( ALL_JAVA_BINDINGS )
+  #  ADD_DEPENDENCIES( ALL_JAVA_BINDINGS java_sdk ${ALL_JAVA_BINDING_TARGETS} )
+endif ( BUILD_JAVA_BINDINGS )
+
+
 IF(BUILD_V8_BINDINGS)
   ADD_CUSTOM_TARGET( ALL_V8_BINDINGS )
   ADD_DEPENDENCIES( ALL_V8_BINDINGS ${ALL_V8_BINDING_TARGETS} )
@@ -796,11 +814,11 @@ endif( BUILD_DOCUMENTATION )
 
 set(TARGETS_FILE ${CMAKE_BINARY_DIR}/OpenStudioTargets.cmake)
 
-IF( BUILD_WITH_OPENSSL )
-  SET(LIBSSH_EXPORT "libssh_static")
-ELSE( BUILD_WITH_OPENSSL )
-  SET(LIBSSH_EXPORT "")
-ENDIF( BUILD_WITH_OPENSSL )
+#IF( BUILD_WITH_OPENSSL )
+#  SET(LIBSSH_EXPORT "libssh_static")
+#ELSE( BUILD_WITH_OPENSSL )
+#  SET(LIBSSH_EXPORT "")
+#ENDIF( BUILD_WITH_OPENSSL )
 
 IF( WIN32 )
   SET(QTWINMIGRATE_EXPORT "qtwinmigrate")
@@ -825,7 +843,6 @@ export(TARGETS openstudio_runmanager
                openstudio_lib
                openstudio_sdd
                openstudio_contam
-               ${LIBSSH_EXPORT}
                ${QTWINMIGRATE_EXPORT}
                zkexpat
                zkqwt
@@ -857,14 +874,14 @@ INSTALL(FILES "${CMAKE_SOURCE_DIR}/resources/resultsviewer/SmallOffice/SmallOffi
 
 
 # Install additional Documents, such as release notes
-install( FILES "${CMAKE_SOURCE_DIR}/../doc/ReleaseNotes/OpenStudio_Release_Notes_1_2_0_20131220.pdf" DESTINATION . )
+install( FILES "${CMAKE_SOURCE_DIR}/../doc/ReleaseNotes/OpenStudio_Release_Notes_1_3_0_20140328.pdf" DESTINATION . )
 
 ###############################################################################
 
 
 IF (UNIX AND NOT APPLE)
   # if we build on Linux and we built our own Qt, let's grab said Qt and install it
-  IF(QT_QMAKE_EXECUTABLE MATCHES ".*Qt-install.*")
+  IF(CMAKE_PREFIX_PATH MATCHES ".*Qt-install.*")
     INSTALL(DIRECTORY "${CMAKE_BINARY_DIR}/../../../Qt-prefix/src/Qt-install/lib" 
             DESTINATION .)
     INSTALL(DIRECTORY "${CMAKE_BINARY_DIR}/../../../Qt-prefix/src/Qt-install/share" 

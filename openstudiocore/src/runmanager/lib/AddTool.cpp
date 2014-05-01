@@ -25,7 +25,7 @@
 namespace openstudio {
 namespace runmanager {
 
-  AddTool::AddTool(QWidget *parent, Qt::WFlags flags)
+  AddTool::AddTool(QWidget *parent, Qt::WindowFlags flags)
           : QDialog(parent, flags)
   {
     ui.setupUi(this);
@@ -53,7 +53,7 @@ namespace runmanager {
 
     if (!str.isEmpty() )
     {
-      ui.txtToolLocation->setText(toQString(toPath(str).external_file_string()));
+      ui.txtToolLocation->setText(toQString(toPath(str).native()));
     }
   }
 
@@ -63,7 +63,7 @@ namespace runmanager {
 
     if (!str.isEmpty() )
     {
-      ui.txtRemoteToolLocation->setText(toQString(toPath(str).external_file_string()));
+      ui.txtRemoteToolLocation->setText(toQString(toPath(str).native()));
     }
   }
 

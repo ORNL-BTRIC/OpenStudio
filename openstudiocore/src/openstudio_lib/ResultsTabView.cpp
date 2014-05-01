@@ -216,13 +216,12 @@ void ResultsView::searchForExistingResults(const openstudio::path &t_runDir)
   std::vector<openstudio::path> radout;
   std::vector<openstudio::path> reports;
 
-  for ( boost::filesystem::basic_recursive_directory_iterator<openstudio::path> end, dir(t_runDir); 
+  for ( boost::filesystem::recursive_directory_iterator end, dir(t_runDir); 
         dir != end; 
         ++dir ) 
   {
     openstudio::path p = *dir;
-    if (openstudio::toString(p.filename()) == "eplusout.sql")
-    {
+    if        (openstudio::toString(p.filename()) == "eplusout.sql") {
       eplusout.push_back(p);
     } else if (openstudio::toString(p.filename()) == "radout.sql") {
       radout.push_back(p);

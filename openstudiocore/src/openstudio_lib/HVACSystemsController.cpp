@@ -20,6 +20,8 @@
 #include "HVACSystemsController.hpp"
 #include "RefrigerationController.hpp"
 #include "RefrigerationGraphicsItems.hpp"
+#include "RefrigerationGridController.hpp"
+#include "RefrigerationGridView.hpp"
 #include "VRFController.hpp"
 #include "VRFGraphicsItems.hpp"
 #include "LoopLibraryDialog.hpp"
@@ -108,9 +110,10 @@ const QString SHW = "SHW";
 const QString REFRIGERATION = "REFRIGERATION";
 const QString VRF = "VRF";
 
-HVACSystemsController::HVACSystemsController(const model::Model & model)
+HVACSystemsController::HVACSystemsController(bool isIP, const model::Model & model)
   : QObject(),
-    m_model(model)
+    m_model(model),
+    m_isIP(isIP)
 {
   m_hvacSystemsView = new HVACSystemsView();
 
@@ -151,6 +154,10 @@ HVACSystemsController::HVACSystemsController(const model::Model & model)
 
   bingo = connect( m_hvacSystemsView->hvacToolbarView->controlsViewButton,SIGNAL(clicked()),
                    this,SLOT(onShowControlsClicked()));
+  OS_ASSERT(bingo);
+
+  bingo = connect( m_hvacSystemsView->hvacToolbarView->gridViewButton,SIGNAL(clicked()),
+                   this,SLOT(onShowGridClicked()));
   OS_ASSERT(bingo);
 
   updateLater();
@@ -263,6 +270,12 @@ void HVACSystemsController::update()
 
     // Show layout 
 
+    m_hvacSystemsView->hvacToolbarView->zoomInButton->show();
+    m_hvacSystemsView->hvacToolbarView->zoomOutButton->show();
+
+    m_hvacSystemsView->hvacToolbarView->addButton->show();
+    m_hvacSystemsView->hvacToolbarView->deleteButton->show();
+
     m_hvacLayoutController.reset();
     m_hvacControlsController.reset();
     m_refrigerationController.reset();
@@ -278,6 +291,28 @@ void HVACSystemsController::update()
         m_refrigerationController = boost::shared_ptr<RefrigerationController>(new RefrigerationController());
 
         m_hvacSystemsView->mainViewSwitcher->setView(m_refrigerationController->refrigerationView());
+      }  
+      else if( m_hvacSystemsView->hvacToolbarView->gridViewButton->isChecked() )
+      {
+        // TODO
+
+        m_hvacSystemsView->hvacToolbarView->zoomInButton->hide();
+        m_hvacSystemsView->hvacToolbarView->zoomOutButton->hide(); 
+        
+        m_hvacSystemsView->hvacToolbarView->addButton->hide();
+        m_hvacSystemsView->hvacToolbarView->deleteButton->hide();
+
+        m_refrigerationGridController = boost::shared_ptr<RefrigerationGridController>(new RefrigerationGridController(m_isIP, m_model));
+
+        bool isConnected = connect(this, SIGNAL(toggleUnitsClicked(bool)),
+                                   m_refrigerationGridController.get()->refrigerationGridView(), SIGNAL(toggleUnitsClicked(bool)));
+        OS_ASSERT(isConnected);
+
+        isConnected = connect(this, SIGNAL(toggleUnitsClicked(bool)),
+                              this, SLOT(toggleUnits(bool)));
+        OS_ASSERT(isConnected);
+
+        m_hvacSystemsView->mainViewSwitcher->setView(m_refrigerationGridController->refrigerationGridView());
       }
       else
       {
@@ -315,6 +350,21 @@ void HVACSystemsController::update()
         m_hvacSystemsView->hvacToolbarView->zoomOutButton->setEnabled(true);
 
         OSAppBase::instance()->currentDocument()->mainRightColumnController()->mainRightColumnView()->setCurrentId(MainRightColumnController::LIBRARY);
+      }
+      else if( m_hvacSystemsView->hvacToolbarView->gridViewButton->isChecked() )
+      {
+        // TODO
+        m_refrigerationGridController = boost::shared_ptr<RefrigerationGridController>(new RefrigerationGridController(m_isIP, m_model));
+
+        bool isConnected = connect(this, SIGNAL(toggleUnitsClicked(bool)),
+                                   m_refrigerationGridController.get()->refrigerationGridView(), SIGNAL(toggleUnitsClicked(bool)));
+        OS_ASSERT(isConnected);
+
+        isConnected = connect(this, SIGNAL(toggleUnitsClicked(bool)),
+                              this, SLOT(toggleUnits(bool)));
+        OS_ASSERT(isConnected);
+
+        m_hvacSystemsView->mainViewSwitcher->setView(m_refrigerationGridController->refrigerationGridView());
       }
       else
       {
@@ -396,6 +446,11 @@ void HVACSystemsController::onObjectRemoved(const WorkspaceObject & workspaceObj
 
 void HVACSystemsController::onObjectChanged()
 {
+}
+
+void HVACSystemsController::toggleUnits(bool displayIP)
+{
+  m_isIP = displayIP;
 }
 
 void HVACLayoutController::addLibraryObjectToTopLevel(OSItemId itemid)
@@ -598,7 +653,7 @@ void HVACLayoutController::goToOtherLoop( model::ModelObject & modelObject )
 
   if( boost::optional<model::Loop> loop = modelObject.optionalCast<model::Loop>() )
   {
-    m_hvacSystemsController->setCurrentHandle(loop->handle());
+    m_hvacSystemsController->setCurrentHandle(loop->handle().toString());
 
     return;
   }
@@ -613,7 +668,7 @@ void HVACLayoutController::goToOtherLoop( model::ModelObject & modelObject )
       {
         if( boost::optional<model::PlantLoop> plantLoop = comp->plantLoop() )
         {
-          m_hvacSystemsController->setCurrentHandle(plantLoop->handle());
+          m_hvacSystemsController->setCurrentHandle(plantLoop->handle().toString());
         }
 
         return;
@@ -622,7 +677,7 @@ void HVACLayoutController::goToOtherLoop( model::ModelObject & modelObject )
       {
         if( boost::optional<model::AirLoopHVAC> airLoopHVAC = comp->airLoopHVAC() )
         {
-          m_hvacSystemsController->setCurrentHandle(airLoopHVAC->handle());
+          m_hvacSystemsController->setCurrentHandle(airLoopHVAC->handle().toString());
         }
 
         return;
@@ -637,7 +692,7 @@ void HVACLayoutController::goToOtherLoop( model::ModelObject & modelObject )
         {
           if( boost::optional<model::PlantLoop> secondaryPlantLoop = comp->secondaryPlantLoop() )
           {
-            m_hvacSystemsController->setCurrentHandle(secondaryPlantLoop->handle());
+            m_hvacSystemsController->setCurrentHandle(secondaryPlantLoop->handle().toString());
 
             return;
           }
@@ -650,7 +705,7 @@ void HVACLayoutController::goToOtherLoop( model::ModelObject & modelObject )
         {
           if( boost::optional<model::PlantLoop> plantLoop = comp->plantLoop() )
           {
-            m_hvacSystemsController->setCurrentHandle(plantLoop->handle());
+            m_hvacSystemsController->setCurrentHandle(plantLoop->handle().toString());
 
             return;
           }
@@ -728,7 +783,7 @@ void HVACSystemsController::addToModel(AddToModelEnum addToModelEnum)
 
   if( loop )
   {
-    m_currentHandle = loop->handle();
+    m_currentHandle = loop->handle().toString();
   }
 }
 
@@ -738,6 +793,11 @@ void HVACSystemsController::onShowTopologyClicked()
 }
 
 void HVACSystemsController::onShowControlsClicked()
+{
+  updateLater();
+}
+
+void HVACSystemsController::onShowGridClicked()
 {
   updateLater();
 }
@@ -776,11 +836,11 @@ void HVACSystemsController::onRemoveLoopClicked()
 
     if( i == 0 )
     {
-      setCurrentHandle(QUuid(chooser->itemData(i + 1).toString()));
+      setCurrentHandle(QUuid(chooser->itemData(i + 1).toString()).toString());
     }
     else
     {
-      setCurrentHandle(QUuid(chooser->itemData(i - 1).toString()));
+      setCurrentHandle(QUuid(chooser->itemData(i - 1).toString()).toString());
     }
 
     loop->remove();
@@ -793,7 +853,7 @@ void HVACLayoutController::onModelObjectSelected(model::OptionalModelObject & mo
   {
     if( boost::optional<model::WaterUseConnections> waterUseConnections = modelObject->optionalCast<model::WaterUseConnections>() )
     {
-      m_hvacSystemsController->setCurrentHandle(waterUseConnections->handle());
+      m_hvacSystemsController->setCurrentHandle(waterUseConnections->handle().toString());
     }
     else
     {
@@ -1323,7 +1383,7 @@ void HVACLayoutController::goToServiceWaterScene()
 {
   // A null QUuid signals the service water scene
 
-  m_hvacSystemsController->setCurrentHandle(QUuid());
+  m_hvacSystemsController->setCurrentHandle(QUuid().toString());
 }
 
 void HVACLayoutController::clearSceneSelection()

@@ -82,7 +82,7 @@ namespace runmanager {
         } else {
           ++itr;
         }
-      }  
+      }
     }
 
     boost::shared_ptr<detail::RunManager_Impl> get_impl(const openstudio::path &DB, bool t_new, bool t_paused, bool t_initui, bool t_tempdb, bool t_useStatusGUI)
@@ -121,7 +121,7 @@ namespace runmanager {
           {
             boost::filesystem::remove(wDB);
           }
-        } catch (const boost::filesystem::basic_filesystem_error<openstudio::path> &) {
+        } catch (const boost::filesystem::filesystem_error &) {
           throw std::runtime_error("Unable to delete database file: " + toString(wDB));
         }
       }
@@ -427,10 +427,10 @@ namespace runmanager {
     return m;
   }
 
-  void RunManager::setSLURMPassword(const std::string &t_password)
-  {
-    m_impl->setSLURMPassword(t_password);
-  }
+//  void RunManager::setSLURMPassword(const std::string &t_password)
+//  {
+//    m_impl->setSLURMPassword(t_password);
+//  }
 
 
   std::map<std::string, double> RunManager::statistics() const
@@ -466,6 +466,18 @@ namespace runmanager {
   void RunManager::deleteWorkflowByName(const std::string &t_name)
   {
     m_impl->deleteWorkflowByName(t_name);
+  }
+
+  runmanager::Job RunManager::runWorkflow(const std::string &t_json, const openstudio::path &t_basePath, const openstudio::path &t_runPath, 
+      const openstudio::runmanager::Tools &t_tools, const openstudio::runmanager::JSONWorkflowOptions &t_options)
+  {
+    return m_impl->runWorkflow(t_json, t_basePath, t_runPath, t_tools, t_options);
+  }
+
+  runmanager::Job RunManager::runWorkflow(const openstudio::path &t_jsonPath, const openstudio::path &t_basePath, const openstudio::path &t_runPath,
+      const openstudio::runmanager::Tools &t_tools, const openstudio::runmanager::JSONWorkflowOptions &t_options)
+  {
+    return m_impl->runWorkflow(t_jsonPath, t_basePath, t_runPath, t_tools, t_options);
   }
 
 

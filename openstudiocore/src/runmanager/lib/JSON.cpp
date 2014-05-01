@@ -9,8 +9,6 @@
 #include <utilities/core/Compare.hpp>
 #include <utilities/core/PathHelpers.hpp>
 
-#include <qjson/parser.h>
-
 namespace openstudio {
 namespace runmanager {
 namespace detail {
@@ -48,7 +46,7 @@ namespace detail {
 
     if (t_jobTree.allParams().has("flatoutdir"))
     {
-      openstudio::path outdir = openstudio::toPath(t_jobTree.outdir().filename());
+      openstudio::path outdir = t_jobTree.outdir().filename();
       map["outdir"] = toQString(outdir);
     }
 

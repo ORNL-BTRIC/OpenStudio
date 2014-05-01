@@ -27,6 +27,7 @@
 
 #include <QComboBox>
 #include <QDesktopServices>
+#include <QDrag>
 #include <QProcess>
 #include <QProgressDialog>
 #include <QSplitter>
@@ -41,7 +42,7 @@ using openstudio::toQString;
 
 namespace resultsviewer{
 
-  MainWindow::MainWindow(QWidget *parent, Qt::WFlags flags)
+  MainWindow::MainWindow(QWidget *parent, Qt::WindowFlags flags)
     : QMainWindow(parent, flags)
   {
     // plot number used when plots are created - keeps track of max number created
@@ -274,6 +275,9 @@ namespace resultsviewer{
       break;
     case RVD_FILEALREADYOPENED:
       QMessageBox::information(this, tr("File Open"), tr("File already opened."));
+      break;
+    case RVD_FILEDOESNOTEXIST:
+      QMessageBox::information(this, tr("File Open"), tr("File not found:\n" + filename.toUtf8()));
       break;
     case RVD_UNSUPPORTEDVERSION:
       QMessageBox::information(this, tr("File Open"), tr("Unsupported EnergyPlus version. Continuing, unknown errors may occur."));
@@ -1383,6 +1387,11 @@ namespace resultsviewer{
     {
       foreach(QString file, fileList)
       {
+        if (!QFile::exists(file)) {
+          QMessageBox::information(this, tr("File Open"), tr("File not found:\n" + file.toUtf8()));
+          continue;
+        }
+
         if (t_makeTempCopies)
         {
           openstudio::path basename = openstudio::toPath(QFileInfo(file).baseName());

@@ -410,11 +410,16 @@ class RULESET_API OSArgument {
   friend class std::map<std::string, OSArgument>;
   friend struct std::pair<std::string, OSArgument>;
 
-#if _MSC_VER >= 1600
+#ifdef _LIBCPP_VERSION
+  friend struct std::allocator_traits<std::allocator<std::__tree_node<std::__value_type<std::string, OSArgument>, void *> > >;
+#endif
+
+#if _MSC_VER >= 1800
+  friend class std::pair<const std::string, OSArgument>;
+#elif _MSC_VER >= 1600
   friend class std::pair<const std::string, OSArgument>;
   friend class std::_Pair_base<std::string, OSArgument>;
 #endif
-
 
   OSArgument();
   OSArgument(const std::string& name, const OSArgumentType& type, bool required);

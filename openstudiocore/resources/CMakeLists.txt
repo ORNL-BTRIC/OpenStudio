@@ -15,9 +15,11 @@ SET(utilities_resources_src
   "utilities/BCL/Components/philadelphia pa [724086 TMY2-13739]/images/noimage_100px.png"
   utilities/BCL/Measures/SetWindowToWallRatioByFacade/measure.xml
   utilities/BCL/Measures/SetWindowToWallRatioByFacade/measure.rb
-  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/ExampleModel_Test.rb
-  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/SimpleModel_Test.rb
-  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/SimpleModel.osm
+  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/EnvelopeAndLoadTestModel_01.osm
+  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/EnvelopeAndLoadTestModel_02_RotatedSpaceAndBuilding.osm
+  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/ReverseTranslatedModel.osm
+  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/SetWindowToWallRatioByFacade_Test.rb
+  utilities/BCL/Measures/SetWindowToWallRatioByFacade/tests/test.osm
   utilities/BCL/Measures/TestCreateWarningMsgs/measure.rb
   utilities/BCL/Measures/TestCreateWarningMsgs/measure.xml
   utilities/BCL/Measures/TestFlagAsNotApplicable/measure.rb
@@ -60,19 +62,37 @@ SET(ENERGYPLUS_OUTPUTS "")
 
 SET(runmanager_resources_src
   runmanager/5ZoneWarmest.idf
-  runmanager/USA_CO_Golden-NREL.724666_TMY3.epw
-  runmanager/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw
-  runmanager/USA_FL_Tampa.Intl.AP.722110_TMY3.epw
-  runmanager/in.file
-  runmanager/test.rb
-  runmanager/ScheduleFile.csv
-  runmanager/databasev1.db
   runmanager/create_os_result.rb
   runmanager/create_os_result_success.rb
-  runmanager/DummyMeasure/measure.xml
+  runmanager/databasev1.db
   runmanager/DummyMeasure/measure.rb
+  runmanager/DummyMeasure/measure.xml
+  runmanager/in.file
+  runmanager/jsonworkflowtest/small_seed.json
+  runmanager/jsonworkflowtest/inputs/measures/adjust_thermostat_setpoints_by_degrees/measure.rb
+  runmanager/jsonworkflowtest/inputs/measures/adjust_thermostat_setpoints_by_degrees/measure.xml
+  runmanager/jsonworkflowtest/inputs/measures/increase_insulation_r_value_for_exterior_walls/measure.rb
+  runmanager/jsonworkflowtest/inputs/measures/increase_insulation_r_value_for_exterior_walls/measure.xml
+  runmanager/jsonworkflowtest/inputs/measures/increase_insulation_r_value_for_roofs/measure.rb
+  runmanager/jsonworkflowtest/inputs/measures/increase_insulation_r_value_for_roofs/measure.xml
+  runmanager/jsonworkflowtest/inputs/measures/reduce_lighting_loads_by_percentage/measure.rb
+  runmanager/jsonworkflowtest/inputs/measures/reduce_lighting_loads_by_percentage/measure.xml
+  runmanager/jsonworkflowtest/inputs/measures/reduce_space_infiltration_by_percentage/measure.rb
+  runmanager/jsonworkflowtest/inputs/measures/reduce_space_infiltration_by_percentage/measure.xml
+  runmanager/jsonworkflowtest/inputs/measures/reduce_ventilation_by_percentage/measure.rb
+  runmanager/jsonworkflowtest/inputs/measures/reduce_ventilation_by_percentage/measure.xml
+  runmanager/killtree.sh
+  runmanager/ScheduleFile.csv
   runmanager/SimpleModel.osm
-)
+  runmanager/test.ies
+  runmanager/test.rb
+  runmanager/test.xml
+  runmanager/UrlTest.osm.in
+  runmanager/USA_CA_San.Francisco.Intl.AP.724940_TMY3.epw
+  runmanager/USA_CO_Golden-NREL.724666_TMY3.epw
+  runmanager/USA_FL_Tampa.Intl.AP.722110_TMY3.epw
+
+  )
 
 # update the resources
 UPDATE_RESOURCES("${runmanager_resources_src}")
@@ -263,6 +283,18 @@ SET(osversion_resources_src
   osversion/1_2_4/OpenStudio.idd
   osversion/1_2_4/example.osm
   osversion/1_2_4/example.osc
+  osversion/1_2_5/OpenStudio.idd
+  osversion/1_2_5/example.osm
+  osversion/1_2_5/example.osc
+  osversion/1_3_0/OpenStudio.idd
+  osversion/1_3_0/example.osm
+  osversion/1_3_0/example.osc
+  osversion/1_3_1/OpenStudio.idd
+  osversion/1_3_1/example.osm
+  osversion/1_3_1/example.osc
+  osversion/1_3_2/OpenStudio.idd
+  osversion/1_3_2/example.osm
+  osversion/1_3_2/example.osc
   osversion/unknown.osc
 )
 

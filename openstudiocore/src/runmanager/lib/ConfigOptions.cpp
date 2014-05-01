@@ -35,7 +35,7 @@
 #include <boost/filesystem.hpp>
 #include <boost/thread.hpp>
 
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
 #include <Windows.h>
 // Undefine "max" defined by microsoft which conflicts with std::max
 #undef max
@@ -244,7 +244,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toRTraceToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus) 
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -262,7 +262,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toExpandObjectsToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus) 
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -286,7 +286,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toBasementToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus) 
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -324,7 +324,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toSlabToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus) 
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -361,7 +361,7 @@ namespace runmanager {
   openstudio::runmanager::ToolInfo 
     ConfigOptions::toXMLPreprocessorToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus) 
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -378,7 +378,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toEPlusToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus)
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -403,7 +403,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toIES2RadToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus)
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -420,7 +420,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toRaImageToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus)
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
     static const char exename[] = "ra_bmp";
 #else
@@ -441,7 +441,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toRadToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus)
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -458,7 +458,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toRubyToolInfo(const std::pair<ToolVersion, ToolLocationInfo> &eplus)
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -475,7 +475,7 @@ namespace runmanager {
 
   openstudio::runmanager::ToolInfo ConfigOptions::toDakotaToolInfo(const std::pair<ToolVersion, ToolLocationInfo>& dakota) 
   {
-#ifdef Q_WS_WIN
+#ifdef Q_OS_WIN
     static const wchar_t exeext[] = L".exe";
 #else
     static const char exeext[] = "";
@@ -607,6 +607,80 @@ namespace runmanager {
     m_slurmAccount = boost::trim_copy(t_account);
   }
 
+  std::vector<openstudio::path> ConfigOptions::potentialRadianceLocations() const
+  {
+    std::vector<openstudio::path> potentialpaths;
+
+    QByteArray qba = qgetenv("RAYPATH");
+    if (!qba.isEmpty())
+    {
+      QString radiancedir(qba);
+
+      QStringList qsl = radiancedir.split(';', QString::SkipEmptyParts);
+
+      for (QStringList::const_iterator itr = qsl.begin();
+           itr != qsl.end();
+           ++itr)
+      {
+        if (QFile(*itr).exists())
+        {
+          openstudio::path p = toPath(*itr);
+
+          potentialpaths.push_back(toPath(*itr));
+          if (p.has_parent_path())
+          {
+            potentialpaths.push_back(p.parent_path());
+          }
+
+          if (p.parent_path().has_parent_path())
+          {
+            potentialpaths.push_back(p.parent_path().parent_path());
+          }
+        }
+      }
+    }
+      
+
+    std::vector<openstudio::path> searchdirs;
+#if defined(Q_OS_WIN32)
+    searchdirs.push_back(toPath("C:\\Program Files\\"));
+    searchdirs.push_back(toPath("C:\\Program Files (x86)\\"));
+
+    if (openstudio::applicationIsRunningFromBuildDirectory())
+    {
+      searchdirs.push_back(openstudio::getApplicationRunDirectory().parent_path().parent_path().parent_path().parent_path().parent_path());
+    } else  {
+      searchdirs.push_back(openstudio::getApplicationRunDirectory().parent_path());
+    }
+#elif defined(Q_OS_MAC)
+    searchdirs.push_back(toPath("/Applications"));
+    searchdirs.push_back(toPath("/usr/local"));
+    searchdirs.push_back(openstudio::getSharedResourcesPath());
+#else
+    searchdirs.push_back(toPath("/usr/local"));
+    searchdirs.push_back(openstudio::getSharedResourcesPath());
+#endif
+
+    for (std::vector<openstudio::path>::const_iterator itr = searchdirs.begin();
+         itr != searchdirs.end();
+         ++itr)
+    {
+      QDir dir(toQString(*itr), "Radiance*", QDir::Name, QDir::Dirs);
+
+      QStringList qsl = dir.entryList();
+
+      for (QStringList::const_iterator itr = qsl.begin();
+           itr != qsl.end();
+           ++itr)
+      {
+        potentialpaths.push_back(toPath(dir.canonicalPath()) / toPath(*itr));
+      }
+    }
+
+    return potentialpaths;
+  }
+
+
   std::vector<openstudio::path> ConfigOptions::potentialEnergyPlusLocations() const
   {
     std::vector<openstudio::path> potentialpaths;
@@ -658,6 +732,15 @@ namespace runmanager {
 
     return potentialpaths;
   }
+
+  void ConfigOptions::fastFindRadiance()
+  {
+    std::vector<std::pair<openstudio::runmanager::ToolVersion, openstudio::runmanager::ToolLocationInfo> >
+      foundTools = openstudio::runmanager::ToolFinder::findTools(potentialRadianceLocations(), false);
+
+    m_toolLocations.insert(foundTools.begin(), foundTools.end());
+  }
+
 
   void ConfigOptions::fastFindEnergyPlus()
   {
