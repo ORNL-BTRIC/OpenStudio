@@ -38,12 +38,10 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/foreach.hpp>
 #include <boost/bind.hpp>
-#include <boost/regex.hpp>
 #include <boost/lexical_cast.hpp>
 
 #include <sstream>
 #include <iostream>
-#include <deque>
 #include <map>
 #include <list>
 
@@ -219,7 +217,7 @@ namespace detail {
 
   boost::optional<WorkspaceObject> Workspace_Impl::getObject(const Handle& handle) const {
     WorkspaceObjectMap::const_iterator womIt = m_workspaceObjectMap.find(handle);
-    if (womIt != m_workspaceObjectMap.end()) { return WorkspaceObject(womIt->second); }
+    if (womIt != m_workspaceObjectMap.end()) { return WorkspaceObject(*womIt); }
     return boost::none;
   }
 
@@ -249,8 +247,8 @@ namespace detail {
     }
 
     WorkspaceObjectVector result;
-    BOOST_FOREACH(const WorkspaceObjectMap::value_type& p, m_workspaceObjectMap) {
-      WorkspaceObject obj = WorkspaceObject(p.second);
+    BOOST_FOREACH(const WorkspaceObjectMap::mapped_type& p, m_workspaceObjectMap) {
+      WorkspaceObject obj = WorkspaceObject(p);
       if (obj.iddObject() != versionIdd.get()) {
         result.push_back(obj);
       }
@@ -277,9 +275,9 @@ namespace detail {
     HandleVector result;
     OptionalIddObject versionIdd = m_iddFileAndFactoryWrapper.versionObject();
     if (!versionIdd) { return result; }
-    BOOST_FOREACH(const WorkspaceObjectMap::value_type& p, m_workspaceObjectMap) {
-      if (p.second->iddObject() != versionIdd.get()) {
-        result.push_back(p.first);
+    for( WorkspaceObjectMap::const_iterator it = m_workspaceObjectMap.begin(); it != m_workspaceObjectMap.end(); ++it ) {
+      if (it.value()->iddObject() != versionIdd.get()) {
+        result.push_back(it.key());
       }
     }
     return result;
@@ -287,9 +285,9 @@ namespace detail {
 
   std::vector<WorkspaceObject> Workspace_Impl::objectsWithURLFields() const {
     WorkspaceObjectVector result;
-    BOOST_FOREACH(const WorkspaceObjectMap::value_type& p,m_workspaceObjectMap) {
-      if( p.second->iddObject().hasURL()) {
-         result.push_back(WorkspaceObject(p.second));
+    BOOST_FOREACH(const WorkspaceObjectMap::mapped_type& p,m_workspaceObjectMap) {
+      if( p->iddObject().hasURL()) {
+         result.push_back(WorkspaceObject(p));
       }
     }
     return result;
@@ -336,20 +334,20 @@ namespace detail {
   {
     WorkspaceObjectVector result;
     if (exactMatch) {
-      BOOST_FOREACH(const WorkspaceObjectMap::value_type& p,m_workspaceObjectMap) {
-        if (OptionalString candidate = p.second->name()) {
+      BOOST_FOREACH(const WorkspaceObjectMap::mapped_type& p,m_workspaceObjectMap) {
+        if (OptionalString candidate = p->name()) {
           if (istringEqual(*candidate,name)) {
-            result.push_back(WorkspaceObject(p.second));
+            result.push_back(WorkspaceObject(p));
           }
         }
       }
     }
     else {
       std::string baseName = getBaseName(name);
-      BOOST_FOREACH(const WorkspaceObjectMap::value_type& p,m_workspaceObjectMap) {
-        if (OptionalString candidate = p.second->name()) {
+      BOOST_FOREACH(const WorkspaceObjectMap::mapped_type& p,m_workspaceObjectMap) {
+        if (OptionalString candidate = p->name()) {
           if (baseNamesMatch(baseName, *candidate)) {
-            result.push_back(WorkspaceObject(p.second));
+            result.push_back(WorkspaceObject(p));
           }
         }
       }
@@ -360,12 +358,7 @@ namespace detail {
   std::vector<WorkspaceObject> Workspace_Impl::getObjectsByType(IddObjectType objectType) const {
     IddObjectTypeMap::const_iterator loc = m_iddObjectTypeMap.find(objectType);
     if (loc == m_iddObjectTypeMap.end()) { return WorkspaceObjectVector(); }
-    std::vector<WorkspaceObject> result;
-    result.reserve(loc->second.size());
-    for( WorkspaceObjectMap::const_iterator it = loc->second.begin(); it != loc->second.end(); ++it ) {
-      result.push_back( it->second );
-    }
-    return result;
+    return getObjects(handles(loc->second)); // convert set to vector, then getObjects
   }
 
   std::vector<WorkspaceObject> Workspace_Impl::getObjectsByType(const IddObject& objectType) const {
@@ -411,30 +404,24 @@ namespace detail {
   {
     IdfReferencesMap::const_iterator loc = m_idfReferencesMap.find(referenceName);
     if (loc == m_idfReferencesMap.end()) { return WorkspaceObjectVector(); }
-    std::vector<WorkspaceObject> result;
-    result.reserve(loc->second.size());
-    for( WorkspaceObjectMap::const_iterator it = loc->second.begin(); it != loc->second.end(); ++it ) {
-      result.push_back( it->second );
-    }
-    return result;
+    return getObjects(handles(loc->second)); // convert set to vector, then getObjects
   }
 
   std::vector<WorkspaceObject> Workspace_Impl::getObjectsByReference(
       const std::vector<std::string>& referenceNames) const
   {
-    WorkspaceObjectMap objectMap;
+    std::vector<Handle> hv;
     BOOST_FOREACH(const std::string& referenceName,referenceNames) {
       IdfReferencesMap::const_iterator loc = m_idfReferencesMap.find(referenceName);
       if (loc != m_idfReferencesMap.end()) {
-        objectMap.insert(loc->second.begin(),loc->second.end());
+        BOOST_FOREACH(const Handle& h,loc->second) {
+          hv.push_back(h);
+        }
       }
     }
-    std::vector<WorkspaceObject> result;
-    result.reserve(objectMap.size());
-    for( WorkspaceObjectMap::const_iterator it = objectMap.begin(); it != objectMap.end(); ++it ) {
-      result.push_back( it->second );
-    }
-    return result;
+    std::sort(hv.begin(), hv.end());
+    hv.erase(std::unique(hv.begin(), hv.end()), hv.end());
+    return getObjects(hv); // convert set to vector, then getObjects
   }
 
   boost::optional<WorkspaceObject> Workspace_Impl::getObjectByNameAndReference(
@@ -598,7 +585,7 @@ namespace detail {
     HandleVector newHandles;
     BOOST_FOREACH(const WorkspaceObject_ImplPtr& ptr, objectImplPtrs) {
       newHandles.push_back(ptr->handle());
-      m_workspaceObjectMap.insert(WorkspaceObjectMap::value_type(newHandles.back(),ptr));
+      m_workspaceObjectMap.insert(newHandles.back(),ptr);
       insertIntoIddObjectTypeMap(ptr);
       insertIntoIdfReferencesMap(ptr);
       emit progressValue(++i);
@@ -1550,7 +1537,7 @@ namespace detail {
     OptionalIddField iddField = sourceObject.iddObject().getField(index);
     OS_ASSERT(iddField);
     BOOST_FOREACH(const std::string& referenceName,iddField->properties().references) {
-      m_idfReferencesMap[referenceName].insert(std::make_pair(targetHandle,getObject(targetHandle)->getImpl<WorkspaceObject_Impl>()));
+      m_idfReferencesMap[referenceName].insert(targetHandle);
     }
   }
 
@@ -1597,7 +1584,7 @@ namespace detail {
         }
         // if not, erase the reference
         if (!found) {
-          WorkspaceObjectMap::iterator it = m_idfReferencesMap[referenceName].find(targetObject.handle());
+          HandleSet::iterator it = m_idfReferencesMap[referenceName].find(targetObject.handle());
           OS_ASSERT(it != m_idfReferencesMap[referenceName].end());
           m_idfReferencesMap[referenceName].erase(it);
         }
@@ -1664,7 +1651,7 @@ namespace detail {
       }
       IdfReferencesMap::const_iterator irmLoc = m_idfReferencesMap.find(referenceName);
       if (irmLoc != m_idfReferencesMap.end()) {
-        WorkspaceObjectMap::const_iterator it = irmLoc->second.find(handle);
+        HandleSet::const_iterator it = irmLoc->second.find(handle);
         if (it != irmLoc->second.end()) {
           return true;
         }
@@ -1731,12 +1718,12 @@ namespace detail {
     map<string,list <boost::shared_ptr<WorkspaceObject_Impl> > > objectsRepeatNames;
 
     // by-object items
-    BOOST_FOREACH(const WorkspaceObjectMap::value_type& p, m_workspaceObjectMap)
+    BOOST_FOREACH(const WorkspaceObjectMap::mapped_type& p, m_workspaceObjectMap)
     {
 
       //find all objects with the same name
 
-      OptionalString oName = p.second->name();
+      OptionalString oName = p->name();
       if(oName)
       {
         map<string,pair<bool,boost::shared_ptr<WorkspaceObject_Impl> > >::iterator itr = mapOfNames.find(*oName);
@@ -1748,7 +1735,7 @@ namespace detail {
             itr->second.first=true;
             list<boost::shared_ptr<WorkspaceObject_Impl> > l;
             l.push_front(itr->second.second);
-            l.push_front(p.second);
+            l.push_front(p);
             objectsRepeatNames[itr->first] = l;
           }
           else
@@ -1756,18 +1743,18 @@ namespace detail {
 
             map<string,list <boost::shared_ptr<WorkspaceObject_Impl> > >::iterator j= objectsRepeatNames.find(itr->first);
             OS_ASSERT(j!=objectsRepeatNames.end());
-            j->second.push_front( p.second );
+            j->second.push_front( p );
           }
         }
         else
         {
-          mapOfNames[*oName] = pair<bool,boost::shared_ptr<WorkspaceObject_Impl> >(false,p.second);
+          mapOfNames[*oName] = pair<bool,boost::shared_ptr<WorkspaceObject_Impl> >(false,p);
         }
       }
 
 
       // object-level report
-      ValidityReport objectReport = p.second->validityReport(level,false);
+      ValidityReport objectReport = p->validityReport(level,false);
       OptionalDataError oError = objectReport.nextError();
       while (oError) {
         report.insertError(*oError);
@@ -1779,13 +1766,13 @@ namespace detail {
         // DataErrorType::NoIdd
         // object-level
         if (iddFileType() == IddFileType::UserCustom) {
-          if (!m_iddFileAndFactoryWrapper.isInFile(p.second->iddObject().name())) {
-            report.insertError(DataError(WorkspaceObject(p.second),DataErrorType(DataErrorType::NoIdd)));
+          if (!m_iddFileAndFactoryWrapper.isInFile(p->iddObject().name())) {
+            report.insertError(DataError(WorkspaceObject(p),DataErrorType(DataErrorType::NoIdd)));
           }
         }
         else {
-          if (!m_iddFileAndFactoryWrapper.isInFile(p.second->iddObject().type())) {
-            report.insertError(DataError(WorkspaceObject(p.second),DataErrorType(DataErrorType::NoIdd)));
+          if (!m_iddFileAndFactoryWrapper.isInFile(p->iddObject().type())) {
+            report.insertError(DataError(WorkspaceObject(p),DataErrorType(DataErrorType::NoIdd)));
           }
         }
       } // StrictnessLevel::Draft
@@ -2014,9 +2001,8 @@ namespace detail {
     if (h.isNull()) { return false; }
 
     // WorkspaceObjectMap
-    std::pair<WorkspaceObjectMap::iterator,bool> insertOK;
-    insertOK = m_workspaceObjectMap.insert(WorkspaceObjectMap::value_type(h,ptr));
-    if (!insertOK.second) { return false; }
+    if( m_workspaceObjectMap.contains(h) ) { return false; }
+    m_workspaceObjectMap.insert(h,ptr);
 
     // WorkspaceObjectOrder--push_back if ordered directly
     if (m_workspaceObjectOrder.isDirectOrder()) {
@@ -2041,7 +2027,8 @@ namespace detail {
   void Workspace_Impl::insertIntoIddObjectTypeMap(
       const boost::shared_ptr<WorkspaceObject_Impl>& objectImplPtr)
   {
-    m_iddObjectTypeMap[objectImplPtr->iddObject().type()].insert(std::make_pair(objectImplPtr->handle(),objectImplPtr));
+    m_iddObjectTypeMap[objectImplPtr->iddObject().type()].insert(objectImplPtr->handle());
+    
   }
 
   void Workspace_Impl::insertIntoIdfReferencesMap(
@@ -2049,7 +2036,7 @@ namespace detail {
   {
     StringVector references = objectImplPtr->iddObject().references();
     BOOST_FOREACH(const std::string& referenceName, references) {
-      m_idfReferencesMap[referenceName].insert(std::make_pair(objectImplPtr->handle(), objectImplPtr));
+      m_idfReferencesMap[referenceName].insert(objectImplPtr->handle());
     }
   }
   bool Workspace_Impl::resolvePotentialNameConflicts(Workspace& other) {
@@ -2241,7 +2228,7 @@ namespace detail {
     BOOST_FOREACH(const std::string& reference,references) {
       IdfReferencesMap::iterator irmLoc = m_idfReferencesMap.find(reference);
       OS_ASSERT(irmLoc != m_idfReferencesMap.end());
-      WorkspaceObjectMap::iterator loc = irmLoc->second.find(handle);
+      HandleSet::iterator loc = irmLoc->second.find(handle);
       OS_ASSERT(loc != irmLoc->second.end());
       irmLoc->second.erase(loc);
       // erase entry if set is emtpy
@@ -2251,7 +2238,7 @@ namespace detail {
     // IddObjectTypeMap
     IddObjectTypeMap::iterator iotmLoc = m_iddObjectTypeMap.find(objectImplPtr->iddObject().type());
     OS_ASSERT(iotmLoc != m_iddObjectTypeMap.end());
-    WorkspaceObjectMap::iterator loc = iotmLoc->second.find(handle);
+    HandleSet::iterator loc = iotmLoc->second.find(handle);
     OS_ASSERT(loc != iotmLoc->second.end());
     iotmLoc->second.erase(loc);
     // erase entry if set is empty
@@ -2311,7 +2298,7 @@ namespace detail {
 
   void Workspace_Impl::restoreObject(SavedWorkspaceObject& savedObject) {
     // WorkspaceObjectMap
-    m_workspaceObjectMap.insert(WorkspaceObjectMap::value_type(savedObject.handle,savedObject.objectImplPtr));
+    m_workspaceObjectMap.insert(savedObject.handle,savedObject.objectImplPtr);
 
     // WorkspaceObjectOrder
     if (savedObject.orderIndex) {
@@ -2658,8 +2645,8 @@ namespace detail {
 
   std::vector<WorkspaceObject> Workspace_Impl::allObjects() const {
     WorkspaceObjectVector result;
-    BOOST_FOREACH(const WorkspaceObjectMap::value_type& p, m_workspaceObjectMap) {
-      result.push_back(WorkspaceObject(p.second));
+    BOOST_FOREACH(const WorkspaceObjectMap::mapped_type& p, m_workspaceObjectMap) {
+      result.push_back(WorkspaceObject(p));
     }
     return result;
   }

@@ -35,6 +35,7 @@
 #include <boost/enable_shared_from_this.hpp>
 
 #include <QObject>
+#include <QHash>
 
 #include <string>
 #include <ostream>
@@ -488,18 +489,18 @@ namespace detail {
     IddFileAndFactoryWrapper m_iddFileAndFactoryWrapper; // IDD file to be used for validity checking
     bool m_fastNaming;
 
-    typedef std::map<Handle, boost::shared_ptr<WorkspaceObject_Impl> > WorkspaceObjectMap;
+    typedef QHash<Handle, boost::shared_ptr<WorkspaceObject_Impl> > WorkspaceObjectMap;
     WorkspaceObjectMap m_workspaceObjectMap;
 
     // object for ordering objects in the collection.
     WorkspaceObjectOrder m_workspaceObjectOrder;
 
     // map of IddObjectType to set of objects identified by UUID
-    typedef std::map<IddObjectType, WorkspaceObjectMap > IddObjectTypeMap;
+    typedef std::map<IddObjectType, HandleSet > IddObjectTypeMap;
     IddObjectTypeMap m_iddObjectTypeMap;
 
     // map of reference to set of objects identified by UUID
-    typedef std::map<std::string, WorkspaceObjectMap> IdfReferencesMap; // , IstringCompare
+    typedef std::map<std::string, HandleSet> IdfReferencesMap; // , IstringCompare
     IdfReferencesMap m_idfReferencesMap;
 
     // data object for undos
